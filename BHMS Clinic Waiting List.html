@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1A3A5C">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Bashor Clinic</title>
+<style>
+  :root{
+    --navy:#1A3A5C; --teal:#1B9CB9;
+    --shrine:#185FA5; --central:#0F6E56;
+    --medical:#9B3A3A; --foot:#3D6B8A;
+    --paper:#F5F2EC; --ink:#23303d; --muted:#6f7d8a;
+    --line:#dfd9cf; --card:#ffffff; --green:#2f8f5b; --amber:#C77C2E;
+    --shadow:0 1px 3px rgba(26,58,92,.10),0 6px 20px rgba(26,58,92,.06);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--paper);color:var(--ink);
+    font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    -webkit-font-smoothing:antialiased;overscroll-behavior-y:none;}
+  h1,h2,h3,.ui{font-family:"Avenir Next","Segoe UI",system-ui,sans-serif;}
+
+  /* Topbar takes its color from the SHELTER (matches the main app), not the service. */
+  .topbar{position:sticky;top:0;z-index:30;color:#fff;
+    padding:calc(env(safe-area-inset-top) + 10px) 16px 12px;box-shadow:var(--shadow);transition:background .25s;}
+  .topbar.shrine{background:linear-gradient(160deg,#1f6cba,#185FA5);}
+  .topbar.central{background:linear-gradient(160deg,#13815f,#0F6E56);}
+  .topbar.none{background:linear-gradient(160deg,#23415f,var(--navy));}
+  .tb-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+  .tb-title{font-size:13px;letter-spacing:.14em;text-transform:uppercase;opacity:.85;font-weight:600;}
+  .tb-loc{font-size:24px;font-weight:700;line-height:1.05;margin-top:1px;}
+  .tb-date{font-size:14px;opacity:.9;margin-top:2px;}
+  .tb-date .dow{font-size:19px;font-weight:700;opacity:1;letter-spacing:.01em;}
+  .tb-date .num{font-size:13px;opacity:.85;margin-left:8px;font-weight:600;}
+  .tb-counts{display:flex;gap:11px;flex-wrap:wrap;justify-content:flex-end;max-width:62%;}
+  .tb-count{font-size:11px;letter-spacing:.02em;opacity:.92;text-align:right;}
+  .tb-count b{font-size:16px;font-weight:700;display:block;}
+  .sync{font-family:"Avenir Next",system-ui,sans-serif;font-size:11px;margin-top:9px;opacity:.9;display:flex;align-items:center;gap:6px;}
+  .dot{width:7px;height:7px;border-radius:50%;background:#9fe0b4;}
+  .dot.busy{background:#ffd27a;animation:pulse 1s infinite;}
+  .dot.err{background:#ff8a87;}
+  @keyframes pulse{50%{opacity:.4;}}
+
+  /* Two switches stacked in the header: shelter on top, service below. */
+  .switch{display:flex;background:rgba(255,255,255,.16);border-radius:11px;padding:3px;margin-top:11px;}
+  .switch button{flex:1;border:0;background:transparent;color:#fff;opacity:.7;font-size:13px;font-weight:600;
+    padding:7px 4px;border-radius:8px;font-family:"Avenir Next",system-ui,sans-serif;}
+  .switch button.on{background:#fff;opacity:1;}
+  /* shelter switch: chosen button takes the shelter color */
+  .switch.shelter.shrine  button.on{color:var(--shrine);}
+  .switch.shelter.central button.on{color:var(--central);}
+  /* service switch sits a bit tighter to its parent shelter switch */
+  .switch.service{margin-top:6px;}
+  .switch.service.medical button.on{color:var(--medical);}
+  .switch.service.foot    button.on{color:var(--foot);}
+
+  .list{padding:10px 12px 90px;}
+  .guest{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    margin-bottom:9px;box-shadow:var(--shadow);overflow:hidden;transition:opacity .2s;}
+  .guest.seen{opacity:.55;}
+  .guest.pending{opacity:.6;}
+  .g-head{display:flex;align-items:center;gap:12px;padding:13px 12px;}
+  .g-order{flex:0 0 30px;height:30px;border-radius:50%;background:var(--paper);
+    border:1px solid var(--line);display:flex;align-items:center;justify-content:center;
+    font-family:"Avenir Next",system-ui,sans-serif;font-size:13px;font-weight:700;color:var(--muted);}
+  .g-order.next{background:var(--medical);color:#fff;border-color:var(--medical);}
+  .g-order.next.foot{background:var(--foot);border-color:var(--foot);}
+  .g-order.seen{background:#e8f5ec;color:#2e6b3d;border-color:#a9d3ad;}
+  .g-name{flex:1;font-size:18px;font-weight:600;line-height:1.2;color:var(--navy);}
+  .g-meta{font-family:"Avenir Next",system-ui,sans-serif;font-size:11px;color:var(--muted);
+    margin-top:3px;font-weight:500;letter-spacing:.02em;}
+  .g-meta .other{color:var(--amber);}
+  .g-action{flex:0 0 auto;}
+  .seen-btn{border:1px solid var(--medical);background:var(--medical);color:#fff;
+    border-radius:11px;padding:10px 14px;font-family:"Avenir Next",system-ui,sans-serif;
+    font-size:14px;font-weight:700;line-height:1;}
+  .seen-btn.foot{border-color:var(--foot);background:var(--foot);}
+  .seen-btn:active{transform:scale(.96);}
+  .undo-btn{border:1px solid var(--line);background:var(--paper);color:var(--muted);
+    border-radius:11px;padding:10px 14px;font-family:"Avenir Next",system-ui,sans-serif;
+    font-size:13px;font-weight:700;line-height:1;}
+  .undo-btn:active{transform:scale(.96);}
+  .g-action{display:flex;gap:7px;align-items:center;}
+  .remove-btn{border:1px solid var(--line);background:#fff;color:#a8332f;
+    border-radius:11px;padding:10px 12px;font-family:"Avenir Next",system-ui,sans-serif;
+    font-size:13px;font-weight:700;line-height:1;}
+  .remove-btn:active{transform:scale(.96);}
+  .btn-add{background:var(--navy);}
+
+  /* + Add Guest picker */
+  .add-search{width:100%;border:1px solid var(--line);background:#fff;border-radius:11px;
+    padding:12px;font-size:16px;font-family:"Avenir Next",system-ui,sans-serif;color:var(--ink);}
+  .add-search:focus{outline:2px solid var(--teal);outline-offset:1px;}
+  .add-list{margin-top:10px;}
+  .add-row{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);
+    border-radius:12px;padding:10px 12px;margin-bottom:7px;}
+  .add-name{flex:1;font-size:17px;font-weight:600;color:var(--navy);line-height:1.2;}
+  .add-chip{border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:14px;
+    padding:8px 11px;font-family:"Avenir Next",system-ui,sans-serif;font-size:13px;font-weight:700;
+    line-height:1;white-space:nowrap;}
+  .add-chip:active{transform:scale(.96);}
+  .add-chip.set{background:#e8f3f7;color:var(--navy);border-color:#a9d3df;opacity:.85;}
+  .add-chip.seen{background:#e8f5ec;color:#2e6b3d;border-color:#a9d3ad;opacity:.85;}
+  .add-chip:disabled{cursor:default;transform:none;}
+  .add-empty{text-align:center;color:var(--muted);padding:24px 10px;font-family:"Avenir Next",system-ui,sans-serif;font-size:14px;line-height:1.5;}
+
+  .divider{display:flex;align-items:center;gap:10px;color:var(--muted);
+    font-family:"Avenir Next",system-ui,sans-serif;font-size:11px;font-weight:700;
+    letter-spacing:.08em;text-transform:uppercase;margin:18px 4px 8px;}
+  .divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--line);}
+
+  .empty{text-align:center;color:var(--muted);padding:40px 18px;font-size:15px;}
+  .empty .big{font-size:22px;color:var(--navy);font-weight:700;margin-bottom:8px;
+    font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;}
+
+  .spin{width:36px;height:36px;border:3px solid var(--line);border-top-color:var(--teal);
+    border-radius:50%;animation:sp .8s linear infinite;margin:40px auto;}
+  @keyframes sp{to{transform:rotate(360deg);}}
+
+  .bottombar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:rgba(245,242,236,.94);
+    backdrop-filter:blur(8px);border-top:1px solid var(--line);
+    padding:10px 12px calc(env(safe-area-inset-bottom) + 10px);display:flex;gap:9px;}
+  .btn{flex:1;border:0;border-radius:13px;padding:15px 8px;font-size:15px;font-weight:700;
+    font-family:"Avenir Next",system-ui,sans-serif;color:#fff;box-shadow:var(--shadow);}
+  .btn:active{transform:translateY(1px);}
+  .btn-refresh{background:var(--teal);}
+  .btn-menu{flex:0 0 52px;background:#fff;color:var(--navy);border:1px solid var(--line);font-size:22px;}
+
+  .scrim{position:fixed;inset:0;background:rgba(26,58,92,.42);z-index:40;display:none;align-items:flex-end;}
+  .scrim.show{display:flex;}
+  .sheet{background:var(--paper);width:100%;border-radius:20px 20px 0 0;
+    padding:18px 18px calc(env(safe-area-inset-bottom) + 18px);box-shadow:0 -10px 40px rgba(26,58,92,.25);
+    max-height:88vh;overflow:auto;}
+  .sheet h2{margin:2px 0 14px;font-size:20px;color:var(--navy);}
+  .sheet label{display:block;font-family:"Avenir Next",system-ui,sans-serif;font-size:12px;font-weight:700;
+    letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:12px 0 5px;}
+  .sheet input,.sheet textarea{width:100%;border:1px solid var(--line);background:#fff;
+    border-radius:10px;padding:11px;font-size:15px;font-family:"Avenir Next",system-ui,sans-serif;color:var(--ink);}
+  .sheet input:focus,.sheet textarea:focus{outline:2px solid var(--teal);outline-offset:1px;}
+  .sheet-btn{width:100%;margin-top:14px;border:0;background:var(--navy);color:#fff;border-radius:13px;
+    padding:14px;font-size:15px;font-weight:700;font-family:"Avenir Next",system-ui,sans-serif;}
+  .sheet-btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);margin-top:8px;}
+  .sheet-help{font-family:"Avenir Next",system-ui,sans-serif;font-size:12px;color:var(--muted);margin-top:6px;line-height:1.4;}
+  .sheet .row2{display:flex;gap:8px;}
+  .sheet .row2 input{flex:1;}
+
+  .toast{position:fixed;left:50%;bottom:90px;transform:translate(-50%,20px);background:var(--navy);color:#fff;
+    padding:10px 16px;border-radius:11px;font-family:"Avenir Next",system-ui,sans-serif;font-size:14px;
+    opacity:0;pointer-events:none;transition:.2s;z-index:60;box-shadow:var(--shadow);max-width:90%;}
+  .toast.show{opacity:1;transform:translate(-50%,0);}
+  .toast.err{background:#a8332f;}
+</style>
+</head>
+<body>
+
+<div class="topbar shrine" id="topbar">
+  <div class="tb-row">
+    <div>
+      <div class="tb-title">Bashor Clinic</div>
+      <div class="tb-loc" id="serviceLabel">Shrine · Medical</div>
+      <div class="tb-date" id="dateLabel"></div>
+    </div>
+    <div class="tb-counts" id="counts"></div>
+  </div>
+  <div class="switch shelter shrine" id="shelterSwitch">
+    <button id="btnShrine" class="on">Shrine</button>
+    <button id="btnCentral">Central</button>
+  </div>
+  <div class="switch service medical" id="serviceSwitch">
+    <button id="btnMed" class="on">🩺 Medical</button>
+    <button id="btnFoot">🦶 Foot</button>
+  </div>
+  <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Loading…</span></div>
+</div>
+
+<div class="list" id="list"></div>
+
+<div class="bottombar">
+  <button class="btn btn-refresh" id="btnRefresh">Refresh</button>
+  <button class="btn btn-add" id="btnAdd">+ Add Guest</button>
+  <button class="btn btn-menu" id="btnMenu">☰</button>
+</div>
+
+<!-- + Add Guest: tonight's admitted guests (Stayed / Yoga) for this shelter -->
+<div class="scrim" id="addScrim">
+  <div class="sheet">
+    <h2 id="addTitle">Add Guest</h2>
+    <input class="add-search" id="addSearch" type="text" placeholder="Search tonight's guests…" autocomplete="off" autocapitalize="words">
+    <div class="sheet-help">Tonight's checked-in guests. Tap 🩺 Med or 🦶 Foot to add someone to the end of that list.</div>
+    <div class="add-list" id="addList"></div>
+    <button class="sheet-btn ghost" id="addClose">Done</button>
+  </div>
+</div>
+
+<!-- Settings sheet -->
+<div class="scrim" id="settingsScrim">
+  <div class="sheet">
+    <h2>Settings</h2>
+    <label>Shrine workbook URL</label>
+    <input id="urlShrine" type="text" placeholder="https://script.google.com/macros/s/.../exec" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <div class="sheet-help">Paste the Shrine check-in web app URL. Same one the Street Crew uses.</div>
+    <label>Central workbook URL</label>
+    <input id="urlCentral" type="text" placeholder="https://script.google.com/macros/s/.../exec" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <div class="sheet-help">Paste the Central check-in web app URL.</div>
+    <button class="sheet-btn" id="settingsSave">Save</button>
+    <button class="sheet-btn ghost" id="settingsCancel">Close</button>
+    <div class="sheet-help" id="buildStampSet" style="text-align:center;margin-top:14px;"></div>
+  </div>
+</div>
+
+<!-- Menu sheet -->
+<div class="scrim" id="menuScrim">
+  <div class="sheet">
+    <h2>Menu</h2>
+    <button class="sheet-btn" id="menuSettings">Settings</button>
+    <button class="sheet-btn ghost" id="menuRefresh">Refresh now</button>
+    <button class="sheet-btn ghost" id="menuCode">🔑 Change access code</button>
+    <button class="sheet-btn ghost" id="menuClose">Close menu</button>
+    <div class="sheet-help" style="text-align:center;margin-top:14px;">
+      <span id="buildStampMenu"></span>
+    </div>
+  </div>
+</div>
+
+<!-- Access code sheet -->
+<div class="scrim" id="codeScrim">
+  <div class="sheet">
+    <h2>Enter Access Code</h2>
+    <div class="sheet-help" id="codeMsg" style="font-size:14px;color:var(--ink);"></div>
+    <label>Access code</label>
+    <input id="codeInput" type="text" placeholder="Access code" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <button class="sheet-btn" id="codeSave">Unlock</button>
+    <button class="sheet-btn ghost" id="codeCancel">Cancel</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+var APP_BUILD = "2026-10-23a";
+
+var LS_URL_SHRINE = "bashor.clinic.url.shrine.v1";
+var LS_URL_CENTRAL = "bashor.clinic.url.central.v1";
+var LS_SERVICE = "bashor.clinic.service.v1";   // "medical" or "foot"
+var LS_SHELTER = "bashor.clinic.shelter.v1";   // "shrine" or "central"
+var LS_CODE = "bashor_access_code";            // shared with the check-in app when both are opened from the same site
+
+/* Built-in default URLs (live sheets) so the app works out of the box — no
+   per-phone setup. A volunteer can still override these in settings; a saved
+   override (anything in localStorage) always wins over these defaults. */
+var DEFAULT_URL_SHRINE  = "https://script.google.com/macros/s/AKfycbzQx6UhZslrc7Q9hLCi3xxF8SUxDJI-mulsVl7rbIBZvVEYSnssegTFwz_e3rBc-5Js/exec";
+var DEFAULT_URL_CENTRAL = "https://script.google.com/macros/s/AKfycbxtyMJaYFqxaoUrplB-NLmCxNGFlRAEmUkaAylM-fy7IGvT9YOiWM7QVHkcjS0xYtUS/exec";
+
+var state = {
+  code: localStorage.getItem(LS_CODE) || "",   // access code the shelter scripts require
+  shelter: localStorage.getItem(LS_SHELTER) || "shrine",
+  service: localStorage.getItem(LS_SERVICE) || "medical",
+  urls: {
+    shrine:  localStorage.getItem(LS_URL_SHRINE)  || DEFAULT_URL_SHRINE,
+    central: localStorage.getItem(LS_URL_CENTRAL) || DEFAULT_URL_CENTRAL
+  },
+  date: todayISO(),
+  // guests is only the currently-selected shelter's list. Each entry:
+  // { name, medical:{state,time}, foot:{state,time}, pending:bool }
+  guests: [],
+  loading: false,
+  inflight: 0
+};
+
+function el(id){return document.getElementById(id);}
+function escapeHtml(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c];});}
+function todayISO(){
+  // Eastern-time date to match the sheet's tab naming.
+  try{
+    var parts = new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",year:"numeric",month:"2-digit",day:"2-digit"})
+      .formatToParts(new Date());
+    var y,m,d;
+    parts.forEach(function(p){if(p.type==="year")y=p.value;if(p.type==="month")m=p.value;if(p.type==="day")d=p.value;});
+    return y+"-"+m+"-"+d;
+  }catch(e){
+    var dt=new Date(); var mm=("0"+(dt.getMonth()+1)).slice(-2); var dd=("0"+dt.getDate()).slice(-2);
+    return dt.getFullYear()+"-"+mm+"-"+dd;
+  }
+}
+function fmtDateHtml(iso){
+  var parts=iso.split("-").map(Number);
+  var dt=new Date(parts[0],parts[1]-1,parts[2]);
+  var dow=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][dt.getDay()];
+  var mon=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][dt.getMonth()];
+  return '<span class="dow">'+dow+'</span><span class="num">'+mon+' '+dt.getDate()+'</span>';
+}
+function setSync(kind, txt){
+  var dot=el("syncDot"); dot.className="dot"+(kind==="busy"?" busy":kind==="err"?" err":"");
+  el("syncTxt").textContent=txt;
+}
+function toast(msg, isErr){
+  var t=el("toast"); t.textContent=msg; t.className="toast show"+(isErr?" err":"");
+  setTimeout(function(){t.className="toast";},2600);
+}
+
+/* ---- API ---- */
+// Every request carries the access code (the shelter scripts refuse anything
+// without it). An explicit params.code — the unlock check — is left as is.
+function api(url, params){
+  var sendParams = {};
+  for(var k in params) sendParams[k] = params[k];
+  if(sendParams.code == null) sendParams.code = state.code;
+  return fetch(url, {method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(sendParams)})
+    .then(function(r){return r.json();})
+    .then(function(res){
+      if(params.action !== "auth") checkAuth(res);
+      return res;
+    });
+}
+
+/* ---- Access code ---- */
+// A shelter script answered "wrong or missing code": forget the saved code
+// and ask for it again. (Happens on first use and whenever Patrick changes it.)
+var _codeNotSetWarned = false;
+function checkAuth(res){
+  if(!res) return;
+  if(res.error === "bad_code"){
+    state.code = "";
+    try{ localStorage.removeItem(LS_CODE); }catch(e){}
+    showCodePrompt("That access code didn't work. It may have changed — ask Patrick for the current one.");
+  } else if(res.error === "code_not_set" && !_codeNotSetWarned){
+    _codeNotSetWarned = true;
+    toast("The shelter sheet hasn't been given an access code yet. Tell Patrick.", true);
+  }
+}
+function showCodePrompt(msg){
+  el("codeMsg").textContent = msg || "Enter the shelter access code. You only need to do this once on this phone.";
+  el("codeCancel").style.display = state.code ? "" : "none";   // no way out until a code is saved
+  if(el("codeScrim").classList.contains("show")) return;     // already open: don't wipe what they're typing
+  ["addScrim","settingsScrim","menuScrim"].forEach(function(id){ hide(id); });
+  el("codeInput").value = "";
+  show("codeScrim");
+  setTimeout(function(){ el("codeInput").focus(); }, 50);
+}
+function submitCode(){
+  var val = el("codeInput").value.trim();
+  if(!val){ el("codeInput").focus(); return; }
+  var target = state.urls.shrine || state.urls.central;
+  if(!target){ toast("No shelter sheet is connected — open Settings", true); return; }
+  el("codeSave").disabled = true; setSync("busy","Checking code…");
+  api(target, {action:"auth", code:val})
+    .then(function(res){
+      el("codeSave").disabled = false;
+      if(res && res.ok){
+        state.code = val;
+        try{ localStorage.setItem(LS_CODE, val); }catch(e){}
+        hide("codeScrim"); toast("Unlocked");
+        loadActive(); startAutoRefresh();
+        return;
+      }
+      setSync("err","Locked");
+      var e = res && res.error;
+      el("codeMsg").textContent =
+        e === "bad_code"       ? "That code didn't work. Check the spelling and try again." :
+        e === "code_not_set"   ? "The shelter sheet hasn't been given an access code yet. Tell Patrick." :
+        e === "unknown_action" ? "The shelter sheet needs an update before codes work. Tell Patrick." :
+                                 "Couldn't check the code. Try again in a moment.";
+    })
+    .catch(function(){
+      el("codeSave").disabled = false; setSync("err","Offline?");
+      el("codeMsg").textContent = "No connection to the shelter sheet. Check Wi-Fi or data and try again.";
+    });
+}
+function showLocked(){
+  state.guests = []; render();
+  el("list").innerHTML = '<div class="empty"><div class="big">Locked</div>Enter the shelter access code to see the clinic list.</div>';
+  setSync("err","Locked");
+}
+function anyUrl(){ return !!(state.urls.shrine || state.urls.central); }
+function curUrl(){ return state.urls[state.shelter] || ""; }
+
+/* ---- Load the currently-selected shelter ---- */
+function loadActive(){
+  if(!anyUrl()){ showSetupNeeded(); return; }
+  if(!state.code){ showLocked(); showCodePrompt(); return; }   // nothing loads until a code is saved
+  if(!curUrl()){
+    // shelter is selected but its URL isn't configured
+    state.guests = [];
+    setSync("err", (state.shelter==="shrine"?"Shrine":"Central")+" not connected");
+    render();
+    toast((state.shelter==="shrine"?"Shrine":"Central")+" isn't connected yet — open Settings", true);
+    return;
+  }
+  state.loading = true; render(); setSync("busy","Loading…");
+  api(curUrl(), {action:"cliniclist", location:state.shelter, date:state.date})
+    .then(function(res){
+      state.loading = false;
+      if(res && res.ok){
+        state.guests = (res.guests||[]).map(function(g){
+          return {
+            name: g.name,
+            medical: g.medical || {state:"none",time:""},
+            foot:    g.foot    || {state:"none",time:""},
+            pending: false
+          };
+        });
+        setSync("ok","Synced");
+      } else {
+        setSync("err","Couldn't load");
+        toast("Couldn't load "+(state.shelter==="shrine"?"Shrine":"Central")+" — tap Refresh", true);
+      }
+      render();
+    })
+    .catch(function(){
+      state.loading = false; setSync("err","Offline?");
+      toast("No connection to "+(state.shelter==="shrine"?"Shrine":"Central"), true);
+      render();
+    });
+}
+
+/* ---- Mark seen / undo ---- */
+function markSeen(name){
+  var g = state.guests.find(function(x){return x.name===name;});
+  if(!g) return;
+  var cur = g[state.service] || {state:"none",time:""};
+  if(cur.state !== "yes") return;        // can't mark seen if not requested
+  g[state.service] = {state:"seen", time:nowClock()};
+  g.pending = true; render();
+  var url = curUrl();
+  state.inflight++; setSync("busy","Saving…");
+  api(url, {action:"clinicmark", location:state.shelter, date:state.date, name:name,
+            service:state.service, op:"seen"})
+    .then(function(res){ g.pending=false; doneInflight(res && res.ok); })
+    .catch(function(){ g.pending=false; doneInflight(false); toast("Save failed — tap Refresh", true); });
+}
+function serviceName(svc){ return svc==="medical" ? "Medical" : "Foot"; }
+
+function undoSeen(name){
+  var g = state.guests.find(function(x){return x.name===name;});
+  if(!g) return;
+  var cur = g[state.service] || {state:"none",time:""};
+  if(cur.state !== "seen") return;
+  if(!confirm("Undo Seen for "+name+"?\n\nHe'll go back on the "+serviceName(state.service)+" waiting list.")) return;
+  g[state.service] = {state:"yes", time: cur.time || nowClock()};
+  g.pending = true; render();
+  var url = curUrl();
+  state.inflight++; setSync("busy","Saving…");
+  api(url, {action:"clinicmark", location:state.shelter, date:state.date, name:name,
+            service:state.service, op:"unsee"})
+    .then(function(res){ g.pending=false; doneInflight(res && res.ok); })
+    .catch(function(){ g.pending=false; doneInflight(false); toast("Undo failed — tap Refresh", true); });
+}
+// Remove a WAITING guest from the current list only (Medical or Foot).
+// Never touches the other service, and never applies to a Seen guest.
+function removeRequest(name){
+  var g = state.guests.find(function(x){return x.name===name;});
+  if(!g) return;
+  var svc = state.service;
+  var cur = g[svc] || {state:"none",time:""};
+  if(cur.state !== "yes") return;
+  if(!confirm("Remove "+name+" from the "+serviceName(svc)+" list?")) return;
+  g[svc] = {state:"none", time:""};
+  g.pending = true; render();
+  state.inflight++; setSync("busy","Saving…");
+  api(curUrl(), {action:"clinicrequest", location:state.shelter, date:state.date, name:name,
+                 service:svc, op:"clear"})
+    .then(function(res){ g.pending=false; doneInflight(res && res.ok);
+      if(res && res.ok) toast("Removed "+name+" from "+serviceName(svc));
+      else toast("Remove failed — tap Refresh", true); })
+    .catch(function(){ g.pending=false; doneInflight(false); toast("Remove failed — tap Refresh", true); });
+}
+
+/* ---- + Add Guest: pick from tonight's admitted guests ---- */
+var addState = { guests:[], loading:false, shelter:null };
+
+function openAddGuest(){
+  if(!curUrl()){ toast((state.shelter==="shrine"?"Shrine":"Central")+" isn't connected yet — open Settings", true); return; }
+  addState.shelter = state.shelter;
+  el("addTitle").textContent = "Add Guest — " + (state.shelter==="shrine"?"Shrine":"Central");
+  el("addSearch").value = "";
+  show("addScrim");
+  loadAddList();
+}
+function loadAddList(){
+  addState.loading = true; addState.guests = []; renderAddList();
+  api(curUrl(), {action:"clinicroster", location:state.shelter, date:state.date})
+    .then(function(res){
+      addState.loading = false;
+      if(res && res.ok){
+        addState.guests = (res.guests||[]).map(function(g){
+          return { name:g.name, medical:g.medical||{state:"none"}, foot:g.foot||{state:"none"}, pending:false };
+        });
+      } else if(res && res.error==="unknown_action"){
+        toast("The shelter script needs updating — redeploy Code.gs (Manage deployments → Edit → New version).", true);
+      } else {
+        toast("Couldn't load tonight's guests — try again", true);
+      }
+      renderAddList();
+    })
+    .catch(function(){ addState.loading=false; renderAddList(); toast("No connection — try again", true); });
+}
+function addChip(g, svc){
+  var st = (g[svc]||{}).state || "none";
+  var icon = svc==="medical" ? "🩺" : "🦶";
+  var label = svc==="medical" ? "Med" : "Foot";
+  var nm = escapeHtml(g.name);
+  if(st === "yes")  return '<button class="add-chip set" disabled>'+icon+' Waiting</button>';
+  if(st === "seen") return '<button class="add-chip seen" disabled>'+icon+' Seen ✓</button>';
+  return '<button class="add-chip" data-addreq="'+nm+'|'+svc+'"'+(g.pending?' disabled':'')+'>'+icon+' '+label+'</button>';
+}
+function renderAddList(){
+  var box = el("addList");
+  if(addState.loading){ box.innerHTML = '<div class="spin"></div>'; return; }
+  if(addState.guests.length === 0){
+    box.innerHTML = '<div class="add-empty">No guests are checked in yet tonight.<br>Guests appear here once the Street Crew marks them Stayed or Yoga.</div>';
+    return;
+  }
+  var q = el("addSearch").value.trim().toLowerCase();
+  var rows = addState.guests.filter(function(g){ return !q || g.name.toLowerCase().indexOf(q) >= 0; });
+  if(rows.length === 0){
+    box.innerHTML = '<div class="add-empty">No checked-in guest matches “'+escapeHtml(q)+'”.<br>If he\'s not on tonight\'s roster, ask the Street Crew to add him.</div>';
+    return;
+  }
+  box.innerHTML = rows.map(function(g){
+    return '<div class="add-row"><div class="add-name">'+escapeHtml(g.name)+'</div>'+
+      addChip(g,"medical")+addChip(g,"foot")+'</div>';
+  }).join("");
+}
+function addRequest(name, svc){
+  var g = addState.guests.find(function(x){return x.name===name;});
+  if(!g || (g[svc]||{}).state !== "none") return;   // only turn a flag ON
+  g.pending = true; g[svc] = {state:"yes", time:nowClock()}; renderAddList();
+  var url = state.urls[addState.shelter];
+  setSync("busy","Saving…");
+  api(url, {action:"clinicrequest", location:addState.shelter, date:state.date, name:name,
+            service:svc, op:"request"})
+    .then(function(res){
+      g.pending = false;
+      if(res && res.ok){
+        setSync("ok","Saved "+nowClock());
+        toast((res.unchanged ? name+" was already on the " : "Added "+name+" to the ")+serviceName(svc)+" list");
+        if(addState.shelter === state.shelter) loadActive();   // refresh the queue behind the sheet
+      } else {
+        g[svc] = {state:"none", time:""};
+        setSync("err","Save failed"); toast("Couldn't add "+name+" — try again", true);
+      }
+      renderAddList();
+    })
+    .catch(function(){
+      g.pending = false; g[svc] = {state:"none", time:""}; renderAddList();
+      setSync("err","Save failed"); toast("Couldn't add "+name+" — check connection", true);
+    });
+}
+
+function doneInflight(ok){
+  state.inflight = Math.max(0,state.inflight-1);
+  if(state.inflight===0) setSync(ok?"ok":"err", ok?("Saved "+nowClock()):"Save failed");
+  render();
+}
+function nowClock(){
+  try{
+    return new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",
+      hour:"numeric",minute:"2-digit",second:"2-digit",hour12:true}).format(new Date());
+  }catch(e){
+    var d=new Date(),h=d.getHours(),m=d.getMinutes(),s=d.getSeconds(),ap=h>=12?"PM":"AM";h=h%12||12;
+    return h+":"+("0"+m).slice(-2)+":"+("0"+s).slice(-2)+" "+ap;
+  }
+}
+
+// Convert a clock string like "7:42:09 PM" to seconds since midnight for
+// reliable chronological sorting (lex sort breaks across the AM/PM boundary).
+// Returns null if the string can't be parsed (legacy or empty cell).
+function sortKey(s){
+  if(!s) return null;
+  var m = String(s).trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM|am|pm)?$/);
+  if(!m) return null;
+  var h = parseInt(m[1],10), mi = parseInt(m[2],10), se = m[3]?parseInt(m[3],10):0;
+  var ap = (m[4]||"").toUpperCase();
+  if(ap === "PM" && h < 12) h += 12;
+  if(ap === "AM" && h === 12) h = 0;
+  return h*3600 + mi*60 + se;
+}
+
+/* ---- Render ---- */
+function render(){
+  // Topbar tinted by shelter; the two switches each carry their own active class
+  el("topbar").className = "topbar " + state.shelter;
+  el("shelterSwitch").className = "switch shelter " + state.shelter;
+  el("serviceSwitch").className = "switch service " + state.service;
+  var shelterTxt = state.shelter==="shrine" ? "Shrine" : "Central";
+  var serviceTxt = state.service==="medical" ? "Medical" : "Foot";
+  el("serviceLabel").textContent = shelterTxt + " · " + serviceTxt;
+  el("dateLabel").innerHTML = fmtDateHtml(state.date);
+  el("btnShrine").classList.toggle("on", state.shelter==="shrine");
+  el("btnCentral").classList.toggle("on", state.shelter==="central");
+  el("btnMed").classList.toggle("on", state.service==="medical");
+  el("btnFoot").classList.toggle("on", state.service==="foot");
+
+  // filter to guests who requested the current service (within the active shelter only)
+  var rel = state.guests.filter(function(g){
+    var s = (g[state.service]||{}).state;
+    return s === "yes" || s === "seen";
+  });
+
+  // counts
+  var waiting = rel.filter(function(g){return g[state.service].state==="yes";}).length;
+  var seen    = rel.filter(function(g){return g[state.service].state==="seen";}).length;
+  el("counts").innerHTML =
+    '<div class="tb-count"><b>'+waiting+'</b>Waiting</div>'+
+    '<div class="tb-count"><b>'+seen+'</b>Seen</div>'+
+    '<div class="tb-count"><b>'+(waiting+seen)+'</b>Total</div>';
+
+  var listEl = el("list");
+  if(state.loading){ listEl.innerHTML='<div class="spin"></div>'; return; }
+  if(!anyUrl()){
+    listEl.innerHTML =
+      '<div class="empty"><div class="big">Setup needed</div>'+
+      'Paste the Shrine and Central web app URLs in Settings to begin.</div>';
+    return;
+  }
+  if(!curUrl()){
+    listEl.innerHTML =
+      '<div class="empty"><div class="big">'+shelterTxt+' not connected</div>'+
+      'Open Settings and paste the '+shelterTxt+' web app URL — or switch to the other shelter above.</div>';
+    return;
+  }
+  if(rel.length===0){
+    listEl.innerHTML =
+      '<div class="empty"><div class="big">No one waiting</div>'+
+      'When the Street Crew flags '+serviceTxt+' for a '+shelterTxt+
+      ' guest, they\'ll appear here.</div>';
+    return;
+  }
+
+  // Sort: not-yet-seen by sign-up time ASC (earliest first = top of queue),
+  // then seen by seen-time ASC at the bottom.
+  var waitingArr = rel.filter(function(g){return g[state.service].state==="yes";})
+    .sort(function(a,b){
+      // sign-up time may be missing on legacy rows; fall back to name
+      var ta = sortKey(a[state.service].time), tb = sortKey(b[state.service].time);
+      if(ta != null && tb != null) return ta - tb;
+      if(ta != null) return -1; if(tb != null) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  var seenArr = rel.filter(function(g){return g[state.service].state==="seen";})
+    .sort(function(a,b){
+      var ta = sortKey(a[state.service].time), tb = sortKey(b[state.service].time);
+      if(ta != null && tb != null) return ta - tb;
+      if(ta != null) return -1; if(tb != null) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+  var html = "";
+  if(waitingArr.length){
+    waitingArr.forEach(function(g, i){ html += renderGuest(g, i+1, false); });
+  }
+  if(seenArr.length){
+    html += '<div class="divider">Seen ('+seenArr.length+')</div>';
+    seenArr.forEach(function(g){ html += renderGuest(g, null, true); });
+  }
+  listEl.innerHTML = html;
+}
+function renderGuest(g, pos, isSeen){
+  var nm = escapeHtml(g.name);
+  var other = state.service==="medical" ? "foot" : "medical";
+  var otherState = (g[other]||{}).state;
+  var otherLabel = "";
+  if(otherState==="yes")  otherLabel = '<span class="other">also wants '+(other==="foot"?"Foot":"Medical")+'</span>';
+  else if(otherState==="seen") otherLabel = (other==="foot"?"Foot":"Medical")+' done';
+
+  var orderCls = isSeen ? "g-order seen" : (pos===1 ? "g-order next"+(state.service==="foot"?" foot":"") : "g-order");
+  var orderTxt = isSeen ? "✓" : (pos==null ? "·" : pos);
+
+  var btn;
+  if(isSeen){
+    btn = '<button class="undo-btn" data-undo="'+nm+'">Undo</button>';
+  } else {
+    btn = '<button class="remove-btn" data-remove="'+nm+'">Remove</button>'+
+          '<button class="seen-btn'+(state.service==="foot"?" foot":"")+'" data-seen="'+nm+'">Seen</button>';
+  }
+
+  var metaLine = otherLabel ? ('<div class="g-meta">'+otherLabel+'</div>') : '';
+
+  return '<div class="guest'+(isSeen?' seen':'')+(g.pending?' pending':'')+'">'+
+    '<div class="g-head">'+
+      '<div class="'+orderCls+'">'+orderTxt+'</div>'+
+      '<div class="g-name">'+nm+ metaLine + '</div>'+
+      '<div class="g-action">'+btn+'</div>'+
+    '</div>'+
+  '</div>';
+}
+function showSetupNeeded(){
+  el("list").innerHTML =
+    '<div class="empty"><div class="big">Setup needed</div>'+
+    'Paste the Shrine and Central web app URLs in Settings to begin.</div>';
+  setSync("err","Not connected");
+  openSettings();
+}
+
+/* ---- Events ---- */
+el("list").addEventListener("click", function(e){
+  var s = e.target.closest("[data-seen]");
+  if(s){ markSeen(s.getAttribute("data-seen")); return; }
+  var u = e.target.closest("[data-undo]");
+  if(u){ undoSeen(u.getAttribute("data-undo")); return; }
+  var r = e.target.closest("[data-remove]");
+  if(r){ removeRequest(r.getAttribute("data-remove")); return; }
+});
+el("addList").addEventListener("click", function(e){
+  var b = e.target.closest("[data-addreq]");
+  if(!b || b.disabled) return;
+  var v = b.getAttribute("data-addreq"), i = v.lastIndexOf("|");
+  addRequest(v.slice(0,i), v.slice(i+1));
+});
+el("addSearch").addEventListener("input", renderAddList);
+el("btnAdd").onclick = openAddGuest;
+el("addClose").onclick = function(){ hide("addScrim"); };
+el("btnShrine").onclick = function(){
+  if(state.shelter==="shrine") return;
+  state.shelter="shrine"; localStorage.setItem(LS_SHELTER,"shrine");
+  state.guests=[]; render(); loadActive();
+};
+el("btnCentral").onclick = function(){
+  if(state.shelter==="central") return;
+  state.shelter="central"; localStorage.setItem(LS_SHELTER,"central");
+  state.guests=[]; render(); loadActive();
+};
+el("btnMed").onclick  = function(){ state.service="medical"; localStorage.setItem(LS_SERVICE,"medical"); render(); };
+el("btnFoot").onclick = function(){ state.service="foot";    localStorage.setItem(LS_SERVICE,"foot");    render(); };
+el("btnRefresh").onclick = loadActive;
+
+function show(id){el(id).classList.add("show");} function hide(id){el(id).classList.remove("show");}
+function openSettings(){
+  el("urlShrine").value  = state.urls.shrine;
+  el("urlCentral").value = state.urls.central;
+  hide("menuScrim"); show("settingsScrim");
+}
+el("btnMenu").onclick = function(){ show("menuScrim"); };
+el("menuSettings").onclick = openSettings;
+el("menuRefresh").onclick = function(){ hide("menuScrim"); loadActive(); };
+el("menuClose").onclick = function(){ hide("menuScrim"); };
+el("menuCode").onclick = function(){ hide("menuScrim"); showCodePrompt("Enter the new access code."); };
+el("codeSave").onclick = submitCode;
+el("codeCancel").onclick = function(){ hide("codeScrim"); };
+el("codeInput").addEventListener("keydown", function(e){ if(e.key==="Enter") submitCode(); });
+el("settingsCancel").onclick = function(){ hide("settingsScrim"); };
+el("settingsSave").onclick = function(){
+  var s = el("urlShrine").value.trim();
+  var c = el("urlCentral").value.trim();
+  // Light sanity check: must look like a Google Apps Script web-app URL.
+  function bad(u){ return u && u.indexOf("script.google.com")<0; }
+  if(bad(s)||bad(c)){ toast("That doesn't look like a Google Apps Script URL", true); return; }
+  state.urls.shrine  = s; localStorage.setItem(LS_URL_SHRINE,  s);
+  state.urls.central = c; localStorage.setItem(LS_URL_CENTRAL, c);
+  hide("settingsScrim");
+  if(anyUrl()){ loadActive(); startAutoRefresh(); }
+  toast("Saved");
+};
+
+/* ---- Auto-refresh every 30s while the app is visible ---- */
+var refreshTimer = null;
+function startAutoRefresh(){
+  stopAutoRefresh();
+  refreshTimer = setInterval(function(){
+    if(document.visibilityState === "visible" && state.inflight === 0 && anyUrl()){
+      loadActive();
+    }
+  }, 30000);
+}
+function stopAutoRefresh(){
+  if(refreshTimer){ clearInterval(refreshTimer); refreshTimer=null; }
+}
+document.addEventListener("visibilitychange", function(){
+  if(document.visibilityState === "visible" && anyUrl()){ loadActive(); }
+});
+
+/* ---- Boot ---- */
+(function(){
+  var a=el("buildStampMenu"),b=el("buildStampSet");
+  if(a)a.textContent="Build "+APP_BUILD;
+  if(b)b.textContent="Build "+APP_BUILD;
+})();
+if(!anyUrl())      { showSetupNeeded(); }
+else if(!state.code){ showLocked(); showCodePrompt(); }
+else               { loadActive(); startAutoRefresh(); }
+</script>
+</body>
+</html>
