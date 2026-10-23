@@ -1,0 +1,1170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1A3A5C">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Bashor Check-In</title>
+<style>
+  :root{
+    --navy:#1A3A5C; --teal:#1B9CB9; --shrine:#185FA5; --central:#0F6E56;
+    --red:#E24B4A; --paper:#F5F2EC; --ink:#23303d; --muted:#6f7d8a;
+    --line:#dfd9cf; --card:#ffffff; --green:#2f8f5b; --amber:#C77C2E;
+    --shadow:0 1px 3px rgba(26,58,92,.10),0 6px 20px rgba(26,58,92,.06);
+    --yoga:#7B5EA7;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--paper);color:var(--ink);
+    font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    -webkit-font-smoothing:antialiased;overscroll-behavior-y:none;}
+  h1,h2,h3,.ui{font-family:"Avenir Next","Segoe UI",system-ui,sans-serif;}
+
+  .topbar{position:sticky;top:0;z-index:30;color:#fff;
+    padding:calc(env(safe-area-inset-top) + 10px) 16px 12px;box-shadow:var(--shadow);transition:background .25s;}
+  .topbar.shrine{background:linear-gradient(160deg,#1f6cba,#185FA5);}
+  .topbar.central{background:linear-gradient(160deg,#13815f,#0F6E56);}
+  .topbar.newguests{background:linear-gradient(160deg,#8a6bbf,#6A4C93);}
+  .topbar.none{background:linear-gradient(160deg,#23415f,var(--navy));}
+  .tb-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+  .tb-title{font-size:13px;letter-spacing:.14em;text-transform:uppercase;opacity:.85;font-weight:600;}
+  .tb-loc{font-size:24px;font-weight:700;line-height:1.05;margin-top:1px;}
+  .tb-date{font-size:14px;opacity:.9;margin-top:2px;}
+  .tb-date .dow{font-size:19px;font-weight:700;opacity:1;letter-spacing:.01em;}
+  .tb-date .num{font-size:13px;opacity:.85;margin-left:8px;font-weight:600;}
+  .tb-counts{display:flex;gap:11px;flex-wrap:wrap;justify-content:flex-end;max-width:62%;}
+  .tb-count{font-size:11px;letter-spacing:.02em;opacity:.92;text-align:right;}
+  .tb-count b{font-size:16px;font-weight:700;display:block;}
+  .sync{font-family:"Avenir Next",system-ui,sans-serif;font-size:11px;margin-top:9px;opacity:.9;display:flex;align-items:center;gap:6px;}
+  .dot{width:7px;height:7px;border-radius:50%;background:#9fe0b4;}
+  .dot.busy{background:#ffd27a;animation:pulse 1s infinite;}
+  .dot.err{background:#ff8a87;}
+  @keyframes pulse{50%{opacity:.4;}}
+
+  .switch{display:flex;background:rgba(255,255,255,.16);border-radius:11px;padding:3px;margin-top:11px;}
+  .switch button{flex:1;border:0;background:transparent;color:#fff;opacity:.7;font-size:13px;font-weight:600;
+    padding:7px 4px;border-radius:8px;font-family:"Avenir Next",system-ui,sans-serif;}
+  .switch button.on{background:#fff;opacity:1;}
+  .switch.shrine button.on{color:var(--shrine);} .switch.central button.on{color:var(--central);}
+  .switch.newguests button.on{color:#6A4C93;}
+
+  .searchwrap{padding:12px 14px 4px;}
+  .search{width:100%;border:1px solid var(--line);background:var(--card);border-radius:12px;
+    padding:13px 14px;font-size:16px;font-family:"Avenir Next",system-ui,sans-serif;color:var(--ink);box-shadow:var(--shadow);}
+  .search:focus{outline:2px solid var(--teal);outline-offset:1px;}
+
+  .list{padding:6px 12px 120px;}
+  .empty{text-align:center;color:var(--muted);padding:54px 24px;line-height:1.6;}
+  .empty .big{font-size:18px;color:var(--ink);margin-bottom:6px;font-weight:600;font-family:"Avenir Next",system-ui,sans-serif;}
+  .spin{width:30px;height:30px;border:3px solid var(--line);border-top-color:var(--teal);border-radius:50%;
+    animation:rot .8s linear infinite;margin:40px auto;}
+  @keyframes rot{to{transform:rotate(360deg);}}
+
+  .guest{background:var(--card);border:1px solid var(--line);border-radius:14px;margin:9px 0;box-shadow:var(--shadow);overflow:hidden;transition:opacity .2s;}
+  .guest.dropped{opacity:.42;}
+  .guest.pending{outline:2px solid rgba(255,210,122,.7);}
+  .g-head{display:flex;align-items:center;padding:13px 14px;gap:12px;}
+  .g-order{font-family:"Avenir Next",system-ui,sans-serif;font-size:12px;font-weight:700;color:var(--muted);
+    min-width:30px;text-align:center;background:var(--paper);border-radius:8px;padding:5px 0;}
+  .g-order.stayed{background:rgba(47,143,91,.13);color:var(--green);}
+  .g-name{flex:1;font-size:19px;font-weight:600;line-height:1.15;}
+  .g-name .new{font-family:"Avenir Next",system-ui,sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;
+    color:var(--teal);border:1px solid var(--teal);border-radius:6px;padding:1px 5px;margin-left:7px;vertical-align:middle;text-transform:uppercase;}
+  .g-status{font-family:"Avenir Next",system-ui,sans-serif;font-size:12px;font-weight:700;padding:6px 11px;border-radius:20px;white-space:nowrap;}
+  .st-none{background:var(--paper);color:var(--muted);}
+  .st-stayed{background:rgba(47,143,91,.15);color:var(--green);}
+  .st-excused{background:rgba(199,124,46,.16);color:var(--amber);}
+  .st-noshow{background:rgba(111,125,138,.16);color:var(--muted);}
+  .st-turned{background:rgba(226,75,74,.14);color:var(--red);}
+  .st-banned{background:rgba(226,75,74,.2);color:var(--red);}
+  .st-moved{background:rgba(27,156,185,.16);color:var(--teal);}
+  .st-yoga{background:rgba(123,94,167,.15);color:var(--yoga);}
+
+  .g-actions{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;padding:0 12px 12px;}
+  .g-actions.closed{display:none;}
+  .g-actions.ng-actions{grid-template-columns:repeat(3,1fr);padding-top:4px;}
+  .g-comment-snippet{font-family:"Avenir Next",system-ui,sans-serif;font-size:12px;color:var(--amber);
+    margin-top:4px;line-height:1.35;font-weight:600;}
+  .g-commentbox{padding:0 12px 13px;}
+  .g-commentlabel{display:block;font-family:"Avenir Next",system-ui,sans-serif;font-size:11px;font-weight:700;
+    letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:5px;}
+  .g-commentinput{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:15px;
+    font-family:"Avenir Next",system-ui,sans-serif;background:var(--paper);color:var(--ink);resize:vertical;}
+  .g-commentinput:focus{outline:2px solid var(--teal);outline-offset:1px;background:#fff;}
+
+  /* Clinic request chips on guest cards. Tap to toggle Yes/None.
+     "Seen" is set by the clinic app and is read-only here. */
+  .g-clinic{display:flex;gap:6px;padding:2px 12px 10px;flex-wrap:wrap;}
+  .clinic-chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);
+    background:var(--paper);color:var(--muted);border-radius:14px;padding:5px 10px;
+    font-family:"Avenir Next",system-ui,sans-serif;font-size:12px;font-weight:700;
+    line-height:1;cursor:pointer;user-select:none;}
+  .clinic-chip:active{transform:scale(.96);}
+  .clinic-chip.on{background:#e8f3f7;color:var(--navy);border-color:#a9d3df;}
+  .clinic-chip.seen{background:#e8f5ec;color:#2e6b3d;border-color:#a9d3ad;}
+  .clinic-chip.seen::after{content:"✓";margin-left:2px;font-weight:900;}
+  .act{border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:11px 4px;
+    font-family:"Avenir Next",system-ui,sans-serif;font-size:13px;font-weight:700;color:var(--ink);}
+  .act:active{transform:scale(.96);}
+  .act.sel-stayed{background:var(--green);color:#fff;border-color:var(--green);}
+  .act.sel-excused{background:var(--amber);color:#fff;border-color:var(--amber);}
+  .act.sel-noshow{background:var(--muted);color:#fff;border-color:var(--muted);}
+  .act.sel-turned{background:var(--red);color:#fff;border-color:var(--red);}
+  .act.sel-banned{background:#a8332f;color:#fff;border-color:#a8332f;}
+  .act.sel-moved{background:var(--teal);color:#fff;border-color:var(--teal);}
+  .act.sel-yoga{background:var(--yoga);color:#fff;border-color:var(--yoga);}
+
+  .bottombar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:rgba(245,242,236,.94);
+    backdrop-filter:blur(8px);border-top:1px solid var(--line);
+    padding:10px 12px calc(env(safe-area-inset-bottom) + 10px);display:flex;gap:9px;}
+  .btn{flex:1;border:0;border-radius:13px;padding:15px 8px;font-size:15px;font-weight:700;
+    font-family:"Avenir Next",system-ui,sans-serif;color:#fff;box-shadow:var(--shadow);}
+  .btn:active{transform:translateY(1px);}
+  .btn-add{background:var(--navy);} .btn-close{background:var(--teal);}
+  .btn-menu{flex:0 0 52px;background:#fff;color:var(--navy);border:1px solid var(--line);font-size:22px;}
+
+  .scrim{position:fixed;inset:0;background:rgba(26,58,92,.42);z-index:40;display:none;align-items:flex-end;}
+  .scrim.show{display:flex;}
+  .sheet{background:var(--paper);width:100%;border-radius:20px 20px 0 0;
+    padding:18px 18px calc(env(safe-area-inset-bottom) + 18px);box-shadow:0 -10px 40px rgba(26,58,92,.25);max-height:88vh;overflow:auto;}
+  .sheet h2{margin:2px 0 14px;font-size:20px;color:var(--navy);}
+  .sheet label{display:block;font-family:"Avenir Next",system-ui,sans-serif;font-size:12px;font-weight:700;
+    letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:12px 0 5px;}
+  .sheet input{width:100%;border:1px solid var(--line);border-radius:11px;padding:13px;font-size:16px;
+    font-family:"Avenir Next",system-ui,sans-serif;background:#fff;color:var(--ink);}
+  .sheet input:focus{outline:2px solid var(--teal);outline-offset:1px;}
+  .sheet-actions{display:flex;gap:9px;margin-top:18px;}
+  .sheet-btn{flex:1;border:0;border-radius:12px;padding:14px;font-size:15px;font-weight:700;font-family:"Avenir Next",system-ui,sans-serif;}
+  .sheet-btn.primary{background:var(--teal);color:#fff;} .sheet-btn.ghost{background:#fff;color:var(--navy);border:1px solid var(--line);}
+  .sheet-btn.danger{background:var(--red);color:#fff;}
+  .close-warn{background:rgba(226,75,74,.1);border:1px solid rgba(226,75,74,.4);border-radius:11px;
+    padding:11px 13px;margin-bottom:13px;font-family:"Avenir Next",system-ui,sans-serif;font-size:13.5px;
+    line-height:1.5;color:#a8332f;font-weight:600;}
+  .menu-item{display:flex;align-items:center;gap:13px;width:100%;background:#fff;border:1px solid var(--line);
+    border-radius:13px;padding:15px;margin:8px 0;font-family:"Avenir Next",system-ui,sans-serif;font-size:15px;font-weight:600;color:var(--ink);text-align:left;}
+  .menu-item .ic{font-size:20px;} .menu-item small{display:block;font-weight:400;color:var(--muted);font-size:12.5px;margin-top:2px;}
+  .note{font-family:"Avenir Next",system-ui,sans-serif;font-size:12.5px;color:var(--muted);line-height:1.5;
+    background:rgba(27,156,185,.07);border:1px solid rgba(27,156,185,.2);border-radius:11px;padding:11px 13px;margin-top:14px;}
+  .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%) translateY(20px);background:var(--navy);color:#fff;
+    padding:12px 20px;border-radius:30px;font-size:14px;font-family:"Avenir Next",system-ui,sans-serif;font-weight:600;
+    opacity:0;pointer-events:none;transition:all .25s;z-index:60;box-shadow:0 8px 30px rgba(0,0,0,.3);max-width:88vw;text-align:center;}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .toast.err{background:var(--red);}
+  .brand-foot{text-align:center;color:var(--muted);font-size:11px;font-family:"Avenir Next",system-ui,sans-serif;letter-spacing:.05em;padding:4px 0 0;}
+  .setup{padding:40px 22px;text-align:center;}
+  .setup h2{font-family:"Avenir Next",system-ui,sans-serif;color:var(--navy);}
+  .nottoday{margin:8px 14px 0;padding:10px 13px;border-radius:11px;background:rgba(199,124,46,.13);
+    border:1px solid rgba(199,124,46,.4);color:#8a5a1f;font-family:"Avenir Next",system-ui,sans-serif;
+    font-size:13px;font-weight:600;line-height:1.4;display:flex;align-items:center;gap:8px;}
+  .nottoday .jump{margin-left:auto;background:var(--amber);color:#fff;border:0;border-radius:8px;
+    padding:7px 12px;font-family:inherit;font-size:12.5px;font-weight:700;white-space:nowrap;}
+</style>
+</head>
+<body>
+
+<div class="topbar none" id="topbar">
+  <div class="tb-row">
+    <div>
+      <div class="tb-title">Bashor Night Shelter</div>
+      <div class="tb-loc" id="locName">Select Location</div>
+      <div class="tb-date" id="dateLabel">—</div>
+    </div>
+    <div class="tb-counts" id="counts"></div>
+  </div>
+  <div class="switch none" id="switch">
+    <button id="btnShrine">Shrine</button>
+    <button id="btnCentral">Central</button>
+    <button id="btnNewGuests">New Guests</button>
+  </div>
+  <div class="sync" id="sync"><span class="dot" id="dot"></span><span id="syncTxt">Ready</span></div>
+</div>
+
+<div class="searchwrap">
+  <input class="search" id="search" placeholder="Search guests…" autocomplete="off">
+</div>
+
+<div id="notTodayBanner" class="nottoday" style="display:none"></div>
+
+<div class="list" id="list"></div>
+<div class="brand-foot">Bashor Homeless Men's Night Shelter</div>
+
+<div class="bottombar">
+  <button class="btn btn-menu" id="openMenu">☰</button>
+  <button class="btn btn-add" id="openAdd">+ Add Guest</button>
+  <button class="btn btn-close" id="openClose">Close Night ➜</button>
+</div>
+
+<div class="scrim" id="addScrim"><div class="sheet">
+  <h2>Add Guest</h2>
+  <label>First name</label>
+  <input id="addFirst" placeholder="First" autocomplete="off">
+  <label>Last name</label>
+  <input id="addLast" placeholder="Last" autocomplete="off">
+  <div class="note">For referral-list admits and walk-ups the Street Crew lets in. Added guests appear at the bottom of tonight's roster and are saved straight to the sheet.</div>
+  <div class="sheet-actions">
+    <button class="sheet-btn ghost" id="addCancel">Cancel</button>
+    <button class="sheet-btn primary" id="addSave">Add to Roster</button>
+  </div>
+</div></div>
+
+<div class="scrim" id="closeScrim"><div class="sheet">
+  <h2>Close Out Tonight</h2>
+  <div id="closeSummary" class="ui" style="font-size:14.5px;line-height:1.7;color:var(--ink)"></div>
+  <div class="note">This creates tomorrow's tab in the sheet. Stayed, Excused, and Turned Away guests carry over in arrival order. No-Shows and Banned drop off. Unmarked guests count as No-Show. Tonight's tab stays untouched as a reference.</div>
+  <div class="sheet-actions">
+    <button class="sheet-btn ghost" id="closeCancel">Not Yet</button>
+    <button class="sheet-btn primary" id="closeConfirm">Roll to Next Night</button>
+  </div>
+</div></div>
+
+<div class="scrim" id="menuScrim"><div class="sheet">
+  <h2>Menu</h2>
+  <button class="menu-item" id="mStaff"><span class="ic">👥</span><span>Tonight's staff<small id="staffSub">Street crew, trainer, volunteers</small></span></button>
+  <button class="menu-item" id="mRefresh"><span class="ic">⟳</span><span>Refresh from sheet<small>Pull the latest — see other volunteers' changes</small></span></button>
+  <button class="menu-item" id="mDate"><span class="ic">📅</span><span>Go to a different night<small id="dateSub">—</small></span></button>
+  <button class="menu-item" id="mSettings"><span class="ic">⚙︎</span><span>Connection settings<small>Set or change the sheet links</small></span></button>
+  <button class="menu-item" id="mCode"><span class="ic">🔑</span><span>Access code<small>Change the code saved on this phone</small></span></button>
+  <div class="note"><b>Check-in app · Build <span id="buildStampMenu"></span></b><br>Everyone shares one live Google Sheet per shelter. Changes save instantly for the whole crew. Needs internet at the door.</div>
+  <div class="sheet-actions"><button class="sheet-btn ghost" id="menuClose">Done</button></div>
+</div></div>
+
+<div class="scrim" id="staffScrim"><div class="sheet">
+  <h2>Tonight's Staff</h2>
+  <label>Street Crew</label>
+  <input id="staffStreetCrew" placeholder="Name(s)" autocomplete="off">
+  <label>Trainer</label>
+  <input id="staffTrainer" placeholder="Name(s)" autocomplete="off">
+  <label>Dinner Volunteer</label>
+  <input id="staffDinner" placeholder="Name(s)" autocomplete="off">
+  <label>Overnight Volunteer</label>
+  <input id="staffOvernight" placeholder="Name(s)" autocomplete="off">
+  <div class="note">Recorded on tonight's sheet for reference. Starts blank each night and doesn't carry forward.</div>
+  <div class="sheet-actions">
+    <button class="sheet-btn ghost" id="staffCancel">Cancel</button>
+    <button class="sheet-btn primary" id="staffSave">Save</button>
+  </div>
+</div></div>
+
+<div class="scrim" id="setScrim"><div class="sheet">
+  <h2>Connection Settings</h2>
+  <label>Shrine sheet web-app URL</label>
+  <input id="setUrlShrine" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
+  <label>Central sheet web-app URL</label>
+  <input id="setUrlCentral" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
+  <label>New Guests intake web-app URL</label>
+  <input id="setUrlNewGuests" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off">
+  <div class="note"><b>Check-in app · Build <span id="buildStampSet"></span></b><br>Each shelter has its own Google Sheet, plus a third sheet the referring agencies fill in with new-guest intakes. Paste each one's Web app URL here. You only do this once per device. You can fill in just the ones you have and add the rest later. Ask Patrick if you don't have them.</div>
+  <div class="sheet-actions">
+    <button class="sheet-btn ghost" id="setCancel">Cancel</button>
+    <button class="sheet-btn primary" id="setSave">Save &amp; Test</button>
+  </div>
+</div></div>
+
+<div class="scrim" id="codeScrim"><div class="sheet">
+  <h2>Enter Access Code</h2>
+  <div class="ui" id="codeMsg" style="font-size:14.5px;line-height:1.5;color:var(--ink)"></div>
+  <label>Access code</label>
+  <input id="codeInput" type="text" placeholder="Access code" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+  <div class="sheet-actions">
+    <button class="sheet-btn ghost" id="codeCancel">Cancel</button>
+    <button class="sheet-btn primary" id="codeSave">Unlock</button>
+  </div>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* Bashor Check-In — live Google Sheet edition.
+   All state lives in the Sheet via the Apps Script web app.
+   This client keeps only the current view + a pending-write queue. */
+
+var LS_URL_SHRINE = "bashor_url_shrine", LS_URL_CENTRAL = "bashor_url_central";
+var LS_URL_NEWGUESTS = "bashor_url_newguests";
+var LS_LOC = "bashor_loc", LS_DATE = "bashor_date";
+var LS_CODE = "bashor_access_code";   // shared with the clinic app when both are opened from the same site
+var APP_BUILD = "2026-10-23a";   // bump on every released change; shown in menu + settings
+var el = function(id){ return document.getElementById(id); };
+
+/* Built-in default URLs (live sheets) so the app works out of the box — no
+   per-phone setup. A volunteer can still override these in ☰ → Connection
+   settings; a saved override (anything in localStorage) always wins. */
+var DEFAULT_URL_SHRINE    = "https://script.google.com/macros/s/AKfycbzQx6UhZslrc7Q9hLCi3xxF8SUxDJI-mulsVl7rbIBZvVEYSnssegTFwz_e3rBc-5Js/exec";
+var DEFAULT_URL_CENTRAL   = "https://script.google.com/macros/s/AKfycbxtyMJaYFqxaoUrplB-NLmCxNGFlRAEmUkaAylM-fy7IGvT9YOiWM7QVHkcjS0xYtUS/exec";
+var DEFAULT_URL_NEWGUESTS = "https://script.google.com/macros/s/AKfycbz-AZr8WwIeRiaAGG3t5bB7PoLreBQ7zxaZVEzbEG3mouYHFNeSrWF_aSrVKtMLsU8hbg/exec";
+
+var state = {
+  urls: {
+    shrine:  localStorage.getItem(LS_URL_SHRINE)  || DEFAULT_URL_SHRINE,
+    central: localStorage.getItem(LS_URL_CENTRAL) || DEFAULT_URL_CENTRAL,
+    newguests: localStorage.getItem(LS_URL_NEWGUESTS) || DEFAULT_URL_NEWGUESTS
+  },
+  code: localStorage.getItem(LS_CODE) || "",   // access code the shelter scripts require
+  loc: localStorage.getItem(LS_LOC) || null,
+  date: localStorage.getItem(LS_DATE) || todayISO(),
+  guests: [],
+  intake: [],          // New Guests cards for the current night
+  openCard: null,
+  loading: false,
+  inflight: 0
+};
+// URL for the currently selected location
+function curUrl(){ return state.loc ? state.urls[state.loc] : ""; }
+function anyUrl(){ return state.urls.shrine || state.urls.central; }
+function isIntakeView(){ return state.loc === "newguests"; }
+
+var STATUSES = {
+  stayed:{label:"Stayed",short:"Stayed"}, yoga:{label:"Yoga",short:"Yoga"},
+  excused:{label:"Excused",short:"Excused"},
+  noshow:{label:"No Show",short:"No Show"}, turned:{label:"Turned Away",short:"Turned"},
+  banned:{label:"Banned",short:"Banned"}, moved:{label:"Moved",short:"Moved"}
+};
+var ROLLOVER = {stayed:1,yoga:1,excused:1,turned:1};
+var DROP = {noshow:1,banned:1,moved:1};
+
+// New-Guests assignment options. `value` is the exact string written back to
+// the agency sheet's Guest Status column (must match its dropdown). `shelter`
+// is which check-in roster an admitted guest is added to (null = not admitted).
+var INTAKE_OPTIONS = [
+  {key:"shrine",    value:"Shrine",                     shelter:"shrine",  label:"Shrine"},
+  {key:"shrineLM",  value:"Shrine - Limited Mobility",  shelter:"shrine",  label:"Shrine · LM"},
+  {key:"central",   value:"Central",                    shelter:"central", label:"Central"},
+  {key:"noshow",    value:"No Show",                    shelter:null,      label:"No Show"},
+  {key:"turned",    value:"Turned Away",                shelter:null,      label:"Turned Away"},
+  {key:"banned",    value:"BANNED",                     shelter:null,      label:"Banned"}
+];
+// map a written status string back to its option (for re-opening the sheet)
+function intakeOptByValue(v){
+  v=(v||"").trim();
+  for(var i=0;i<INTAKE_OPTIONS.length;i++){ if(INTAKE_OPTIONS[i].value===v) return INTAKE_OPTIONS[i]; }
+  return null;
+}
+
+// Eastern-pinned "today" (yyyy-mm-dd). Using UTC here (toISOString) caused the
+// date to jump ahead in the evening; en-CA gives ISO order and we force the TZ.
+function todayISO(){
+  try{
+    return new Intl.DateTimeFormat("en-CA",{timeZone:"America/New_York",
+      year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+  }catch(e){ // fallback if Intl/timeZone unsupported
+    var d=new Date(); return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2);
+  }
+}
+function fmtDate(iso){
+  if(!iso) return "—";
+  var p=iso.split("-"), dt=new Date(+p[0],+p[1]-1,+p[2]);
+  var dow=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][dt.getDay()];
+  return dow+" · "+(+p[1])+"/"+(+p[2])+"/"+p[0].slice(2);
+}
+// Topbar version: full weekday prominent, numeric date as a quiet subline.
+function fmtDateHtml(iso){
+  if(!iso) return "—";
+  var p=iso.split("-"), dt=new Date(+p[0],+p[1]-1,+p[2]);
+  var dow=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][dt.getDay()];
+  return '<span class="dow">'+dow+'</span><span class="num">'+(+p[1])+"/"+(+p[2])+"/"+p[0].slice(2)+'</span>';
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+
+/* ---- Network ---- */
+function setSync(kind, txt){
+  var d=el("dot"); d.className="dot"+(kind==="busy"?" busy":kind==="err"?" err":"");
+  el("syncTxt").textContent = txt;
+}
+var _toastTimer=null;
+function toast(msg, err){
+  var t=el("toast"); if(!t) return;
+  t.textContent = msg;
+  t.className = "toast show" + (err ? " err" : "");
+  if(_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(function(){ t.className = "toast" + (err ? " err" : ""); }, err ? 6000 : 3000);
+}
+function api(params, urlOverride){
+  // POST as text/plain to dodge CORS preflight on Apps Script.
+  // Apps Script /exec returns a 302 to googleusercontent.com; follow it.
+  // Retry a couple of times on transient "Failed to fetch" (flaky venue wifi).
+  // Every request carries the access code (the shelter scripts refuse anything
+  // without it). An explicit params.code — the unlock check — is left as is.
+  var target = urlOverride || curUrl();
+  var sendParams = {};
+  for(var k in params) sendParams[k] = params[k];
+  if(sendParams.code == null) sendParams.code = state.code;
+  var body = JSON.stringify(sendParams);
+  var attempts = 0;
+  function go(){
+    attempts++;
+    return fetch(target, {
+      method:"POST",
+      redirect:"follow",
+      headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body: body
+    }).then(function(r){ return r.json(); })
+      .catch(function(err){
+        if(attempts < 3){
+          return new Promise(function(res){ setTimeout(res, 400*attempts); }).then(go);
+        }
+        throw err;
+      });
+  }
+  return go().then(function(res){
+    if(params.action !== "auth") checkAuth(res);
+    return res;
+  });
+}
+
+/* ---- Access code ---- */
+// A shelter script answered "wrong or missing code": forget the saved code
+// and ask for it again. (Happens on first use and whenever Patrick changes it.)
+var _codeNotSetWarned = false;
+function checkAuth(res){
+  if(!res) return;
+  if(res.error === "bad_code"){
+    state.code = "";
+    try{ localStorage.removeItem(LS_CODE); }catch(e){}
+    showCodePrompt("That access code didn't work. It may have changed — ask Patrick for the current one.");
+  } else if(res.error === "code_not_set" && !_codeNotSetWarned){
+    _codeNotSetWarned = true;
+    toast("The shelter sheet hasn't been given an access code yet. Tell Patrick.", true);
+  }
+}
+function showCodePrompt(msg){
+  el("codeMsg").textContent = msg || "Enter the shelter access code. You only need to do this once on this phone.";
+  el("codeCancel").style.display = state.code ? "" : "none";   // no way out until a code is saved
+  if(el("codeScrim").classList.contains("show")) return;     // already open: don't wipe what they're typing
+  ["addScrim","closeScrim","menuScrim","staffScrim","setScrim"].forEach(hide);
+  el("codeInput").value = "";
+  show("codeScrim");
+  setTimeout(function(){ el("codeInput").focus(); }, 50);
+}
+function submitCode(){
+  var val = el("codeInput").value.trim();
+  if(!val){ el("codeInput").focus(); return; }
+  var target = state.urls.shrine || state.urls.central;
+  if(!target){ toast("No shelter sheet is connected — open ☰ → Connection settings", true); return; }
+  el("codeSave").disabled = true; setSync("busy","Checking code…");
+  api({action:"auth", code:val}, target)
+    .then(function(res){
+      el("codeSave").disabled = false;
+      if(res && res.ok){
+        state.code = val;
+        try{ localStorage.setItem(LS_CODE, val); }catch(e){}
+        hide("codeScrim"); toast("Unlocked"); boot();
+        return;
+      }
+      setSync("err","Locked");
+      var e = res && res.error;
+      el("codeMsg").textContent =
+        e === "bad_code"       ? "That code didn't work. Check the spelling and try again." :
+        e === "code_not_set"   ? "The shelter sheet hasn't been given an access code yet. Tell Patrick." :
+        e === "unknown_action" ? "The shelter sheet needs an update before codes work. Tell Patrick." :
+                                 "Couldn't check the code. Try again in a moment.";
+    })
+    .catch(function(){
+      el("codeSave").disabled = false; setSync("err","Offline?");
+      el("codeMsg").textContent = "No connection to the shelter sheet. Check Wi-Fi or data and try again.";
+    });
+}
+
+/* ---- Load roster ---- */
+function loadRoster(){
+  if(!anyUrl()){ showSetupNeeded(); return; }
+  if(isIntakeView()){ loadIntake(); return; }
+  if(!state.loc){ render(); return; }
+  if(!curUrl()){ render(); toast((state.loc==="shrine"?"Shrine":"Central")+" isn't connected yet — open Settings", true); return; }
+  state.loading = true; render();
+  setSync("busy","Loading…");
+  api({action:"roster", location:state.loc, date:state.date})
+    .then(function(res){
+      state.loading=false;
+      if(res && res.ok){
+        state.guests = (res.guests||[]).map(function(g){
+          return {name:g.name, status:g.status, time:g.status==="stayed"?cleanTime(g.raw):null,
+                  comment:g.comment||"",
+                  medical: g.medical || {state:"none",time:""},
+                  foot:    g.foot    || {state:"none",time:""},
+                  isNew:false, pending:false};
+        });
+        var st=res.staff||{};
+        state.staffFilled = ["streetCrew","trainer","dinner","overnight"].some(function(k){return (st[k]||"").trim();});
+        setSync("ok","Synced "+nowClock());
+      } else {
+        setSync("err","Couldn't load");
+        toast("Couldn't load roster", true);
+      }
+      render();
+    })
+    .catch(function(){ state.loading=false; setSync("err","Offline?"); toast("No connection to the sheet", true); render(); });
+}
+function cleanTime(raw){ return /\d/.test(raw)?raw:null; }
+function nowClock(){
+  try{
+    return new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",
+      hour:"numeric",minute:"2-digit",second:"2-digit",hour12:true}).format(new Date());
+  }catch(e){
+    var d=new Date(),h=d.getHours(),m=d.getMinutes(),s=d.getSeconds(),ap=h>=12?"PM":"AM";h=h%12||12;
+    return h+":"+("0"+m).slice(-2)+":"+("0"+s).slice(-2)+" "+ap;
+  }
+}
+
+/* ---- New Guests intake (the agency sheet) ---- */
+function loadIntake(){
+  if(!state.urls.newguests){ render(); toast("New Guests isn't connected yet — open Settings", true); return; }
+  state.loading=true; render(); setSync("busy","Loading…");
+  api({action:"ngroster", date:state.date}, state.urls.newguests)
+    .then(function(res){
+      state.loading=false;
+      if(res && res.ok){
+        state.intake = (res.guests||[]).map(function(g){
+          var opt = intakeOptByValue(g.status);
+          return {name:g.name, first:g.first, last:g.last, agency:g.agency||"",
+                  tbCard:!!g.tbCard, returning:!!g.returning,
+                  note: String(g.note||"").trim(),  // col G Intake Note (e.g. banned-list override reason)
+                  assigned: opt ? opt.key : null,   // pre-set if already written
+                  pending:false};
+        });
+        setSync("ok","Synced "+nowClock());
+      } else {
+        setSync("err","Couldn't load"); toast("Couldn't load intake list", true);
+      }
+      render();
+    })
+    .catch(function(){ state.loading=false; setSync("err","Offline?"); toast("No connection to the New Guests sheet", true); render(); });
+}
+
+// Open the New-Guests view: ask its sheet which night to show.
+function openIntake(){
+  if(!state.urls.newguests){ render(); toast("New Guests isn't connected yet — open Settings", true); return; }
+  state.loading=true; render(); setSync("busy","Loading…");
+  api({action:"nglatest", today:todayISO()}, state.urls.newguests)
+    .then(function(res){
+      if(res && res.ok && res.date){
+        state.date=res.date; state.isToday=!!res.isToday; localStorage.setItem(LS_DATE,state.date);
+      } else { state.date=todayISO(); state.isToday=true; }
+      loadIntake();
+    })
+    .catch(function(){ state.loading=false; setSync("err","Offline?"); toast("No connection to the New Guests sheet", true); render(); });
+}
+
+// Tap an assignment button on an intake card. Local only until Close Night.
+function assignIntake(name, key){
+  var g = state.intake.find(function(x){return x.name===name;});
+  if(!g) return;
+  g.assigned = (g.assigned===key) ? null : key;   // toggle off
+  render();
+}
+
+// Open a location: ask the sheet which night to show (today if it exists,
+// else the most recent existing night so the crew can close it out).
+function openLocation(){
+  if(!curUrl()){ render(); toast((state.loc==="shrine"?"Shrine":"Central")+" isn't connected yet — open Settings", true); return; }
+  state.loading=true; render(); setSync("busy","Loading…");
+  api({action:"latest", location:state.loc, today:todayISO()})
+    .then(function(res){
+      if(res && res.ok && res.date){
+        state.date = res.date;
+        state.isToday = !!res.isToday;
+        localStorage.setItem(LS_DATE, state.date);
+      } else {
+        state.date = todayISO(); state.isToday = true;
+      }
+      loadRoster();
+    })
+    .catch(function(){ state.loading=false; setSync("err","Offline?"); toast("No connection to the sheet", true); render(); });
+}
+
+/* ---- Optimistic actions ---- */
+function markGuest(name, status){
+  var g = state.guests.find(function(x){return x.name===name;});
+  if(!g) return;
+  if(g.status===status){ status=null; }            // toggle off
+  g.status = status;
+  g.time = status==="stayed" ? nowClock() : null;
+  g.seq  = status==="stayed" ? Date.now() : null;   // true arrival order, immune to clock-string sorting
+  g.pending = true; render();
+  state.inflight++; setSync("busy","Saving…");
+  api({action:"mark", location:state.loc, date:state.date, name:name,
+       status: status||"clear", time:g.time||""})
+    .then(function(res){ g.pending=false; doneInflight(res && res.ok); })
+    .catch(function(){ g.pending=false; doneInflight(false); toast("Save failed — tap Refresh", true); });
+}
+function doneInflight(ok){
+  state.inflight=Math.max(0,state.inflight-1);
+  if(state.inflight===0) setSync(ok?"ok":"err", ok?("Saved "+nowClock()):"Save failed");
+  render();
+}
+
+function saveComment(name, text){
+  var g = state.guests.find(function(x){return x.name===name;});
+  if(!g) return;
+  g._draftComment = null;                 // edit committed, drop the draft
+  if((g.comment||"") === text) { render(); return; }   // no change
+  g.comment = text; g.pending = true; render();
+  state.inflight++; setSync("busy","Saving…");
+  api({action:"comment", location:state.loc, date:state.date, name:name, comment:text})
+    .then(function(res){ g.pending=false; doneInflight(res && res.ok); })
+    .catch(function(){ g.pending=false; doneInflight(false); toast("Comment save failed — tap Refresh", true); });
+}
+
+// Street Crew clinic toggle. service = "medical" or "foot".
+// Tapping a "yes" chip clears it; tapping a "none" chip sets yes.
+// "Seen" chips are owned by the clinic app — tapping them here does nothing.
+function toggleClinic(name, service){
+  var g = state.guests.find(function(x){return x.name===name;});
+  if(!g) return;
+  var cur = g[service] || {state:"none",time:""};
+  if(cur.state === "seen") return;          // can't unmark "seen" from here
+  var nextAction, nextState;
+  if(cur.state === "yes"){ nextAction="clear"; nextState={state:"none",time:""}; }
+  else                   { nextAction="request"; nextState={state:"yes",time:nowClock()}; }
+  g[service] = nextState; g.pending = true; render();
+  state.inflight++; setSync("busy","Saving…");
+  api({action:"clinicrequest", location:state.loc, date:state.date, name:name,
+       service:service, op:nextAction})
+    .then(function(res){ g.pending=false; doneInflight(res && res.ok); })
+    .catch(function(){ g.pending=false; doneInflight(false); toast("Clinic save failed — tap Refresh", true); });
+}
+
+/* ---- Rendering ---- */
+function render(){
+  var loc=state.loc;
+  el("topbar").className="topbar "+(loc||"none");
+  el("switch").className="switch "+(loc||"none");
+  el("btnShrine").classList.toggle("on",loc==="shrine");
+  el("btnCentral").classList.toggle("on",loc==="central");
+  var bng=el("btnNewGuests"); if(bng) bng.classList.toggle("on",loc==="newguests");
+
+  if(!anyUrl() && !state.urls.newguests){ return; }
+  // bottom bar: hide Add Guest in intake view, relabel Close → Admit & Send
+  el("openAdd").style.display = isIntakeView() ? "none" : "";
+  el("openClose").textContent = isIntakeView() ? "Admit & Send ➜" : "Close Night ➜";
+  if(!loc){
+    el("locName").textContent="Select Location";
+    el("dateLabel").textContent="Choose Shrine or Central to begin";
+    el("counts").innerHTML=""; el("dateSub").textContent="—";
+    el("list").innerHTML='<div class="empty"><div class="big">Welcome</div>Pick a location above to open the roster.</div>';
+    return;
+  }
+  if(isIntakeView()){ renderIntake(); return; }
+  el("locName").textContent = loc==="shrine"?"Shrine":"Central";
+  el("dateLabel").innerHTML = fmtDateHtml(state.date);
+  el("dateSub").textContent = fmtDate(state.date);
+  var ss=el("staffSub"); if(ss) ss.textContent = state.staffFilled ? "✓ Recorded for tonight" : "Street crew, trainer, volunteers";
+
+  var banner=el("notTodayBanner");
+  if(state.isToday===false){
+    banner.style.display="flex";
+    banner.innerHTML='<span>⚠️ Showing '+fmtDate(state.date)+' — not today. Likely an un-closed night.</span>'+
+      '<button class="jump" id="jumpToday">Go to today</button>';
+    el("jumpToday").onclick=function(){ state.date=todayISO(); state.isToday=true; localStorage.setItem(LS_DATE,state.date); state.openCard=null; loadRoster(); };
+  } else {
+    banner.style.display="none";
+  }
+
+  var t={stayed:0,yoga:0,excused:0,unmarked:0};
+  state.guests.forEach(function(g){ if(g.status==="stayed")t.stayed++; else if(g.status==="yoga")t.yoga++; else if(g.status==="excused")t.excused++; if(!g.status)t.unmarked++; });
+  var unmarkedStyle = t.unmarked>0 ? ' style="color:#ffd27a"' : '';
+  el("counts").innerHTML='<div class="tb-count"><b>'+state.guests.length+'</b>On roster</div>'+
+    '<div class="tb-count"><b>'+(t.stayed+t.yoga)+'</b>Stayed</div>'+
+    (t.yoga>0?'<div class="tb-count" style="color:#c9b8e8"><b>'+t.yoga+'</b>Yoga</div>':'')+
+    '<div class="tb-count"><b>'+t.excused+'</b>Excused</div>'+
+    '<div class="tb-count"'+unmarkedStyle+'><b>'+t.unmarked+'</b>Unmarked</div>';
+
+  var listEl=el("list");
+  if(state.loading){ listEl.innerHTML='<div class="spin"></div>'; return; }
+
+  var q=el("search").value.trim().toLowerCase();
+  var ordered=displayOrder(state.guests).filter(function(g){return !q||g.name.toLowerCase().indexOf(q)>=0;});
+  if(state.guests.length===0){
+    listEl.innerHTML='<div class="empty"><div class="big">Empty roster</div>No tab for this night yet, or it has no guests.<br>Tap “+ Add Guest” to start it.</div>';
+    return;
+  }
+  if(ordered.length===0){ listEl.innerHTML='<div class="empty">No guests match “'+escapeHtml(q)+'”.</div>'; return; }
+
+  var seq=0;
+  listEl.innerHTML=ordered.map(function(g){
+    var isOpen=g.name===state.openCard, dropped=DROP[g.status];
+    var badge = (g.status==="stayed" || g.status==="yoga") ? '<div class="g-order stayed">'+(++seq)+'</div>' : '<div class="g-order">·</div>';
+    var stCls=g.status?"st-"+g.status:"st-none";
+    var stTxt=g.status?(STATUSES[g.status].short+(g.time?" "+g.time:"")):"Tap to mark";
+    var hasComment = (g.comment||"").trim().length>0;
+    var commentChip = hasComment
+      ? '<div class="g-comment-snippet">💬 '+escapeHtml((g.comment||"").length>60?(g.comment.slice(0,60)+"…"):g.comment)+'</div>'
+      : '';
+    var nm = escapeHtml(g.name);
+    var med  = g.medical || {state:"none"};
+    var foot = g.foot    || {state:"none"};
+    var medCls  = med.state==="seen"  ? "on seen" : med.state==="yes"  ? "on" : "";
+    var footCls = foot.state==="seen" ? "on seen" : foot.state==="yes" ? "on" : "";
+    var clinicRow = '<div class="g-clinic">'+
+      '<span class="clinic-chip '+medCls+'"  data-clinic="'+nm+'|medical">🩺 Med</span>'+
+      '<span class="clinic-chip '+footCls+'" data-clinic="'+nm+'|foot">🦶 Foot</span>'+
+      '</div>';
+    return '<div class="guest '+(dropped?'dropped':'')+(g.pending?' pending':'')+'" data-id="'+nm+'">'+
+      '<div class="g-head" data-toggle="'+nm+'">'+badge+
+      '<div class="g-name">'+nm+(g.isNew?'<span class="new">New</span>':'')+commentChip+'</div>'+
+      '<div class="g-status '+stCls+'">'+stTxt+'</div></div>'+
+      '<div class="g-actions '+(isOpen?'':'closed')+'">'+
+        actBtn(g,"stayed")+actBtn(g,"yoga")+actBtn(g,"excused")+actBtn(g,"noshow")+
+        actBtn(g,"turned")+actBtn(g,"banned")+actBtn(g,"moved")+
+      '</div>'+
+      clinicRow+
+      (isOpen ? ('<div class="g-commentbox">'+
+        '<label class="g-commentlabel">Comment (carries to next night)</label>'+
+        '<textarea class="g-commentinput" data-cmt="'+nm+'" rows="2" placeholder="Add a note for later crews…">'+escapeHtml(g._draftComment!=null?g._draftComment:(g.comment||""))+'</textarea>'+
+      '</div>') : '')+
+      '</div>';
+  }).join("");
+}
+function actBtn(g,key){
+  var sel=g.status===key?"sel-"+key:"";
+  return '<button class="act '+sel+'" data-act="'+escapeHtml(g.name)+'|'+key+'">'+STATUSES[key].label+'</button>';
+}
+
+/* ---- Render the New Guests intake list ---- */
+function renderIntake(){
+  el("locName").textContent="New Guests";
+  el("dateLabel").innerHTML = fmtDateHtml(state.date);
+  el("dateSub").textContent = fmtDate(state.date);
+
+  var banner=el("notTodayBanner");
+  if(state.isToday===false){
+    banner.style.display="flex";
+    banner.innerHTML='<span>⚠️ Showing '+fmtDate(state.date)+' — not today. Likely an un-processed intake.</span>'+
+      '<button class="jump" id="jumpToday">Go to today</button>';
+    el("jumpToday").onclick=function(){ state.date=todayISO(); state.isToday=true; localStorage.setItem(LS_DATE,state.date); state.openCard=null; loadIntake(); };
+  } else { banner.style.display="none"; }
+
+  // counts: total referred, assigned to each shelter, unassigned
+  var c={total:state.intake.length, shrine:0, central:0, rejected:0, unassigned:0};
+  state.intake.forEach(function(g){
+    if(!g.assigned){ c.unassigned++; return; }
+    var opt=INTAKE_OPTIONS.find(function(o){return o.key===g.assigned;});
+    if(!opt){ c.unassigned++; return; }
+    if(opt.shelter==="shrine") c.shrine++;
+    else if(opt.shelter==="central") c.central++;
+    else c.rejected++;
+  });
+  var unStyle = c.unassigned>0 ? ' style="color:#ffd27a"' : '';
+  el("counts").innerHTML='<div class="tb-count"><b>'+c.total+'</b>Referred</div>'+
+    '<div class="tb-count"><b>'+c.shrine+'</b>→Shrine</div>'+
+    '<div class="tb-count"><b>'+c.central+'</b>→Central</div>'+
+    '<div class="tb-count"'+unStyle+'><b>'+c.unassigned+'</b>Unassigned</div>';
+
+  var listEl=el("list");
+  if(state.loading){ listEl.innerHTML='<div class="spin"></div>'; return; }
+
+  var q=el("search").value.trim().toLowerCase();
+  var rows=state.intake.filter(function(g){return !q||g.name.toLowerCase().indexOf(q)>=0;});
+
+  if(state.intake.length===0){
+    listEl.innerHTML='<div class="empty"><div class="big">No new guests tonight</div>'+
+      'No referred guests on the intake sheet for this night.<br>'+
+      'The agencies fill this in when there are admits.</div>';
+    return;
+  }
+  if(rows.length===0){ listEl.innerHTML='<div class="empty">No guests match “'+escapeHtml(q)+'”.</div>'; return; }
+
+  // unassigned first (work queue), then assigned
+  rows.sort(function(a,b){
+    var au=a.assigned?1:0, bu=b.assigned?1:0;
+    return au-bu || (a.name.toLowerCase()<b.name.toLowerCase()?-1:1);
+  });
+
+  listEl.innerHTML=rows.map(function(g){
+    var nm=escapeHtml(g.name);
+    var opt=g.assigned?INTAKE_OPTIONS.find(function(o){return o.key===g.assigned;}):null;
+    var stCls, stTxt;
+    if(!opt){ stCls="st-none"; stTxt="Assign"; }
+    else if(opt.shelter==="shrine"){ stCls="st-stayed"; stTxt=opt.label; }
+    else if(opt.shelter==="central"){ stCls="st-moved"; stTxt=opt.label; }
+    else { stCls=(opt.key==="banned"||opt.key==="turned")?"st-turned":"st-noshow"; stTxt=opt.label; }
+
+    var tags=[];
+    if(g.agency) tags.push('🏢 '+escapeHtml(g.agency));
+    if(g.tbCard) tags.push('🪪 TB card');
+    if(g.returning) tags.push('↩︎ Returning');
+    var meta = tags.length ? '<div class="g-comment-snippet" style="color:var(--muted)">'+tags.join(' &nbsp;·&nbsp; ')+'</div>' : '';
+    // Agency's intake note (col G) — e.g. the reason they overrode a banned-list match.
+    if(g.note) meta += '<div class="g-comment-snippet" style="color:var(--red)">⚠️ '+escapeHtml(g.note)+'</div>';
+
+    var btns=INTAKE_OPTIONS.map(function(o){
+      var sel=g.assigned===o.key?(' sel-'+(o.shelter==="shrine"?"stayed":o.shelter==="central"?"moved":(o.key==="banned"||o.key==="turned"?"turned":"noshow"))):"";
+      return '<button class="act'+sel+'" data-ng="'+nm+'|'+o.key+'">'+o.label+'</button>';
+    }).join("");
+
+    return '<div class="guest'+(g.pending?' pending':'')+'" data-id="'+nm+'">'+
+      '<div class="g-head" data-ngtoggle="'+nm+'"><div class="g-order">·</div>'+
+      '<div class="g-name">'+nm+'<span class="new">NEW</span>'+meta+'</div>'+
+      '<div class="g-status '+stCls+'">'+stTxt+'</div></div>'+
+      '<div class="g-actions ng-actions">'+btns+'</div>'+
+      '</div>';
+  }).join("");
+}
+function displayOrder(guests){
+  // Unmarked first (active work queue), then stayed in arrival order,
+  // then the remaining statuses grouped (excused, turned, noshow, banned, moved), alpha within each.
+  guests.forEach(function(g,i){ if(g._idx==null) g._idx=i; });
+  var GROUP = {excused:2, turned:3, noshow:4, banned:5, moved:6};
+  function rank(g){
+    if(!g.status)            return [0, g.name.toLowerCase()];           // unmarked: top, alpha
+    if(g.status==="stayed" || g.status==="yoga")
+                             return [1, g.seq||g._idx];                  // stayed+yoga: arrival order
+    return [GROUP[g.status]||9, g.name.toLowerCase()];                   // others: grouped, alpha
+  }
+  return guests.slice().sort(function(a,b){var ra=rank(a),rb=rank(b);return ra[0]-rb[0]||(ra[1]<rb[1]?-1:ra[1]>rb[1]?1:0);});
+}
+
+/* ---- Events ---- */
+el("list").addEventListener("click",function(e){
+  // New Guests intake taps
+  var ng=e.target.closest("[data-ng]");
+  if(ng){var p=ng.getAttribute("data-ng").split("|");assignIntake(p[0],p[1]);return;}
+  if(e.target.closest("[data-ngtoggle]")) return;  // tapping the card head does nothing in intake view
+  // ignore taps inside the comment editor
+  if(e.target.closest("[data-cmt]")) return;
+  // clinic chip taps (handled before toggle so tapping a chip doesn't open/close the card)
+  var chip=e.target.closest("[data-clinic]");
+  if(chip){var cp=chip.getAttribute("data-clinic").split("|");toggleClinic(cp[0],cp[1]);return;}
+  var tog=e.target.closest("[data-toggle]");
+  if(tog){var n=tog.getAttribute("data-toggle");state.openCard=(state.openCard===n)?null:n;render();return;}
+  var act=e.target.closest("[data-act]");
+  if(act){var parts=act.getAttribute("data-act").split("|");markGuest(parts[0],parts[1]);}
+});
+el("list").addEventListener("blur",function(e){
+  var ta=e.target.closest("[data-cmt]");
+  if(ta){ saveComment(ta.getAttribute("data-cmt"), ta.value.trim()); }
+}, true);
+el("list").addEventListener("input",function(e){
+  var ta=e.target.closest("[data-cmt]");
+  if(ta){ // keep state in sync live so a background re-render can't wipe an in-progress edit
+    var g=state.guests.find(function(x){return x.name===ta.getAttribute("data-cmt");});
+    if(g) g._draftComment=ta.value;
+  }
+});
+el("search").addEventListener("input",render);
+el("btnShrine").onclick=function(){state.loc="shrine";localStorage.setItem(LS_LOC,"shrine");state.openCard=null;el("search").value="";openLocation();};
+el("btnCentral").onclick=function(){state.loc="central";localStorage.setItem(LS_LOC,"central");state.openCard=null;el("search").value="";openLocation();};
+el("btnNewGuests").onclick=function(){
+  if(!state.urls.newguests){toast("New Guests isn't connected yet — open Settings",true);return;}
+  state.loc="newguests";localStorage.setItem(LS_LOC,"newguests");state.openCard=null;el("search").value="";openIntake();
+};
+
+function show(id){el(id).classList.add("show");} function hide(id){el(id).classList.remove("show");}
+
+el("openAdd").onclick=function(){if(!state.loc){toast("Pick a location first",true);return;}el("addFirst").value="";el("addLast").value="";show("addScrim");setTimeout(function(){el("addFirst").focus();},50);};
+el("addCancel").onclick=function(){hide("addScrim");};
+el("addSave").onclick=function(){
+  var first=el("addFirst").value.trim(), last=el("addLast").value.trim();
+  var name=(first+" "+last).trim();
+  if(!first){el("addFirst").focus();return;}
+  if(state.guests.some(function(g){return g.name.toLowerCase()===name.toLowerCase();})){toast("Already on the roster");hide("addScrim");return;}
+  state.guests.push({name:name,status:null,time:null,isNew:true,pending:true}); hide("addScrim"); render();
+  state.inflight++; setSync("busy","Saving…");
+  api({action:"add",location:state.loc,date:state.date,name:name})
+    .then(function(res){var g=state.guests.find(function(x){return x.name===name;});if(g)g.pending=false;doneInflight(res&&res.ok);toast("Added "+name);})
+    .catch(function(){doneInflight(false);toast("Add failed — tap Refresh",true);});
+};
+el("addLast").addEventListener("keydown",function(e){if(e.key==="Enter")el("addSave").click();});
+el("addFirst").addEventListener("keydown",function(e){if(e.key==="Enter")el("addLast").focus();});
+
+el("openClose").onclick=function(){
+  if(!state.loc){toast("Pick a location first",true);return;}
+  if(isIntakeView()){ openIntakeCommit(); return; }
+  // Gate 1: this shelter's Tonight's Staff must be fully entered before closing.
+  setSync("busy","Checking staff…");
+  api({action:"staff", location:state.loc, date:state.date})
+    .then(function(res){
+      if(!res || !res.ok){
+        setSync("err","Staff check failed");
+        var why = (res && (res.message||res.error)) ? (": "+(res.message||res.error)) : " — the shelter sheet didn't respond as expected.";
+        toast("Can't verify staff"+why, true);
+        return;   // fail safe
+      }
+      var staff = res.staff || {};
+      var missing = STAFF_KEYS.filter(function(k){ return !((staff[k]||"").trim()); });
+      if(missing.length){
+        setSync("ok","Ready");
+        toast("Enter Tonight's Staff before closing — open ☰ → Tonight's Staff. Use \"none\" for any role that wasn't filled.", true);
+        return;   // hard block
+      }
+      // staff complete → run the intake gate next
+      checkIntakeThenClose();
+    })
+    .catch(function(err){
+      setSync("err","Staff check failed");
+      toast("Couldn't check tonight's staff ("+(err && err.message ? err.message : "no response")+"). Tap ☰ → Connection settings and confirm the "+(state.loc==="shrine"?"Shrine":"Central")+" URL.", true);
+    });
+};
+
+// Gate 2: if an intake tab exists for tonight and isn't fully assigned, block.
+function checkIntakeThenClose(){
+  if(!state.urls.newguests){
+    // No New Guests URL configured — the gate can't run. Tell the user rather
+    // than silently allowing a close that skips the intake check.
+    toast("New Guests sheet isn't connected — can't verify intake. Add its URL in ☰ → Connection settings.", true);
+    return;
+  }
+  setSync("busy","Checking intake…");
+  api({action:"ngintakestatus", date:state.date}, state.urls.newguests)
+    .then(function(res){
+      setSync("ok","Synced "+nowClock());
+      if(!res || !res.ok){
+        // Most likely the deployed New Guests script is an old version w/o this action.
+        var why = (res && res.error==="unknown_action")
+          ? "the New Guests script is an old version (missing the intake check). Redeploy it: Manage deployments → Edit → New version."
+          : "the New Guests sheet didn't respond as expected.";
+        toast("Can't verify intake — "+why, true);
+        return;   // fail safe: do NOT open the close dialog
+      }
+      if(res.exists && !res.complete){
+        var who = (res.unassignedNames&&res.unassignedNames.length)
+          ? " ("+res.unassignedNames.slice(0,5).join(", ")+(res.unassigned>5?"…":"")+")" : "";
+        toast("Can't close yet — "+res.unassigned+" new guest"+(res.unassigned===1?'':'s')+" still unassigned on the intake list"+who, true);
+        return;
+      }
+      // exists && complete  OR  no intake tab for tonight → ok to proceed
+      buildCloseDialog();
+    })
+    .catch(function(){ setSync("err","Offline?"); toast("Couldn't reach the New Guests sheet to check intake — try again",true); });
+}
+
+function buildCloseDialog(){
+  var t={stayed:0,yoga:0,excused:0,turned:0,noshow:0,banned:0,moved:0,unmarked:0};
+  state.guests.forEach(function(g){g.status?t[g.status]++:t.unmarked++;});
+  var carry=t.stayed+t.yoga+t.excused+t.turned, drop=t.noshow+t.banned+t.moved+t.unmarked;
+  var warn = t.unmarked>0
+    ? '<div class="close-warn">⚠️ '+t.unmarked+' guest'+(t.unmarked===1?'':'s')+' still unmarked. If you close now '+(t.unmarked===1?'it':'they')+' will be recorded as <b>No Show</b>.</div>'
+    : '';
+  el("closeSummary").innerHTML=warn+"Tonight ("+fmtDate(state.date)+"):<br>• <b>"+t.stayed+"</b> stayed, <b>"+t.yoga+"</b> yoga, <b>"+t.excused+"</b> excused, <b>"+t.turned+"</b> turned away<br>• <b>"+(t.noshow+t.unmarked)+"</b> no-show"+(t.unmarked?" (incl. "+t.unmarked+" unmarked)":"")+", <b>"+t.banned+"</b> banned, <b>"+t.moved+"</b> moved<br><br><b>"+carry+"</b> roll forward · <b>"+drop+"</b> drop off.";
+  el("closeConfirm").textContent = t.unmarked>0 ? "Close Anyway ➜" : "Roll to Next Night";
+  el("closeConfirm").className = "sheet-btn " + (t.unmarked>0 ? "danger" : "primary");
+  el("closeScrim").querySelector(".sheet h2").textContent = "Close Out Tonight";
+  var note0=el("closeScrim").querySelector(".note"); if(note0) note0.style.display="";
+  show("closeScrim");
+}
+el("closeCancel").onclick=function(){hide("closeScrim");};
+el("closeConfirm").onclick=function(){
+  if(isIntakeView()){ commitIntake(); return; }
+  hide("closeScrim"); setSync("busy","Closing night…");
+  doClose(false);
+};
+
+// Perform the close. confirmOverwrite=true authorizes rebuilding an existing
+// next-night tab (a re-close).
+function doClose(confirmOverwrite){
+  api({action:"close", location:state.loc, date:state.date, confirmOverwrite:confirmOverwrite})
+    .then(function(res){
+      if(res && res.ok && res.recloseLocked){
+        // Already closed on a prior date — re-roll is locked. Point to manual fix.
+        setSync("ok","Ready");
+        toast(res.message || "This night is closed and can't be re-rolled — add the guest to the current night's tab.", true);
+        return;
+      }
+      if(res && res.ok && res.needsConfirm){
+        // Night was already closed today — ask before overwriting tomorrow.
+        var extra = res.hasActivity
+          ? "\n\n⚠️ Tomorrow's sheet already has check-in activity"+(res.activityNote?" ("+res.activityNote+")":"")+". Overwriting will ERASE it."
+          : "";
+        var msg = "This sheet has already been closed.\n\nProceeding will update tonight's sheet and create a new sheet for tomorrow, overwriting the existing one."+extra+"\n\nProceed?";
+        setSync("ok","Ready");
+        if(confirm(msg)){ setSync("busy","Re-closing…"); doClose(true); }
+        return;
+      }
+      if(res && res.ok && res.closed){
+        if(res.reclosed){ toast("Tomorrow's sheet rebuilt — "+(res.carried||0)+" rolled forward"); }
+        else { toast((res.carried||0)+" guests rolled forward"); }
+        // Banned guests are written to the master banned list by the shelter
+        // script itself during close. Just surface the result.
+        if(res.bannedAdded>0){ toast(res.bannedAdded+" added to banned list"+(res.bannedSkipped?" ("+res.bannedSkipped+" already listed)":"")); }
+        state.date=res.nextDate; localStorage.setItem(LS_DATE,state.date); state.openCard=null; loadRoster();
+      } else { setSync("err","Close failed"); toast("Close-out failed",true); }
+    })
+    .catch(function(){setSync("err","Close failed");toast("Close-out failed — check connection",true);});
+}
+
+/* ---- Commit New Guests assignments ---- */
+function openIntakeCommit(){
+  var c={shrine:0, central:0, rejected:0, unassigned:0};
+  state.intake.forEach(function(g){
+    if(!g.assigned){ c.unassigned++; return; }
+    var o=INTAKE_OPTIONS.find(function(x){return x.key===g.assigned;});
+    if(!o){ c.unassigned++; return; }
+    if(o.shelter==="shrine") c.shrine++;
+    else if(o.shelter==="central") c.central++;
+    else c.rejected++;
+  });
+  var admit=c.shrine+c.central;
+  var warn = c.unassigned>0
+    ? '<div class="close-warn">⚠️ '+c.unassigned+' guest'+(c.unassigned===1?'':'s')+' still unassigned. '+(c.unassigned===1?'It':'They')+' will be left blank on the agency sheet and <b>not</b> admitted. Go back and assign, or send the rest now.</div>'
+    : '';
+  el("closeSummary").innerHTML=warn+
+    "New-guest intake ("+fmtDate(state.date)+"):<br>"+
+    "• <b>"+c.shrine+"</b> → Shrine, <b>"+c.central+"</b> → Central<br>"+
+    "• <b>"+c.rejected+"</b> No Show / Turned Away / Banned<br><br>"+
+    "This writes each assignment to the <b>agency sheet</b> and adds the <b>"+admit+
+    "</b> admitted guest"+(admit===1?'':'s')+" to "+(c.shrine&&c.central?"their shelters'":"the")+" roster"+(admit===1?'':'s')+" for tonight.";
+  el("closeConfirm").textContent = "Admit & Send ➜";
+  el("closeConfirm").className = "sheet-btn primary";
+  el("closeScrim").querySelector(".sheet h2").textContent = "Admit New Guests";
+  // hide the generic rollover note for this view
+  var note=el("closeScrim").querySelector(".note"); if(note) note.style.display="none";
+  show("closeScrim");
+}
+
+function commitIntake(){
+  var assigned=state.intake.filter(function(g){return g.assigned;});
+  if(assigned.length===0){ hide("closeScrim"); toast("Nothing assigned yet"); return; }
+  hide("closeScrim"); setSync("busy","Admitting…");
+  state.inflight++;
+  assigned.forEach(function(g){ g.pending=true; });
+  render();
+
+  // Build a flat list of write steps. Run them ONE AT A TIME — the Apps Script
+  // backend serializes on a script lock, so firing many requests at once makes
+  // the later ones queue and time out (which looked like "some failed" even
+  // though earlier writes landed). Sequential calls avoid the pile-up entirely.
+  var steps=[];
+  assigned.forEach(function(g){
+    var o=INTAKE_OPTIONS.find(function(x){return x.key===g.assigned;});
+    if(!o) return;
+    // a) write status back to the agency sheet
+    steps.push({url:state.urls.newguests, params:{action:"ngassign", date:state.date, name:g.name, status:o.value}, name:g.name});
+    // b) if admitted to a shelter, add them there already marked Stayed
+    if(o.shelter && state.urls[o.shelter]){
+      steps.push({url:state.urls[o.shelter], params:{action:"add", location:o.shelter, date:state.date, name:g.name, status:"stayed"}, name:g.name});
+    }
+  });
+
+  var failedNames={};
+  var failReasons={};
+  var i=0;
+  function runNext(){
+    if(i>=steps.length){ finishCommit(failedNames, failReasons, assigned.length); return; }
+    var s=steps[i++];
+    setSync("busy","Admitting… ("+i+"/"+steps.length+")");
+    api(s.params, s.url)
+      .then(function(r){
+        if(!(r&&r.ok)){
+          failedNames[s.name]=true;
+          var reason = r ? (r.error||r.message||"unknown") : "no response";
+          if(r && r.error==="exception"){ reason = "exception@"+(r.stage||"?")+" "+(r.message||""); }
+          failReasons[s.name]=(s.params.action==="ngassign"?"agency-sheet":"roster")+": "+reason;
+        }
+      })
+      .catch(function(e){ failedNames[s.name]=true; failReasons[s.name]=(s.params.action==="ngassign"?"agency-sheet":"roster")+": neterr "+(e&&e.message?e.message:String(e)); })
+      .then(function(){ setTimeout(runNext, 600); });   // pause between calls so back-to-back POSTs don't fail
+  }
+  runNext();
+}
+
+function finishCommit(failedNames, failReasons, totalAssigned){
+  state.intake.forEach(function(g){ g.pending=false; });
+  state.inflight=Math.max(0,state.inflight-1);
+  var failedList=Object.keys(failedNames);
+  if(failedList.length){
+    setSync("err","Some failed");
+    var detail=failedList.map(function(n){ return n+" — "+(failReasons[n]||"?"); }).join("; ");
+    toast(failedList.length+" didn't fully save: "+detail+" — tap Refresh and retry", true);
+  } else {
+    setSync("ok","Sent "+nowClock());
+    toast(totalAssigned+" guest"+(totalAssigned===1?'':'s')+" admitted & sent");
+  }
+  loadIntake();   // reload from the agency sheet to confirm written state
+}
+
+el("openMenu").onclick=function(){show("menuScrim");};
+el("menuClose").onclick=function(){hide("menuScrim");};
+
+var STAFF_KEYS=["streetCrew","trainer","dinner","overnight"];
+var STAFF_INPUTS={streetCrew:"staffStreetCrew",trainer:"staffTrainer",dinner:"staffDinner",overnight:"staffOvernight"};
+el("mStaff").onclick=function(){
+  if(!state.loc){toast("Pick a location first",true);return;}
+  hide("menuScrim");
+  // clear fields then load current values from the sheet
+  STAFF_KEYS.forEach(function(k){el(STAFF_INPUTS[k]).value="";});
+  show("staffScrim");
+  setSync("busy","Loading staff…");
+  api({action:"staff", location:state.loc, date:state.date})
+    .then(function(res){
+      if(res&&res.ok&&res.staff){ STAFF_KEYS.forEach(function(k){ el(STAFF_INPUTS[k]).value=res.staff[k]||""; }); }
+      setSync("ok","Synced "+nowClock());
+    })
+    .catch(function(){ setSync("err","Offline?"); toast("Couldn't load staff",true); });
+};
+el("staffCancel").onclick=function(){hide("staffScrim");};
+el("staffSave").onclick=function(){
+  var staff={};
+  STAFF_KEYS.forEach(function(k){ staff[k]=el(STAFF_INPUTS[k]).value.trim(); });
+  hide("staffScrim"); setSync("busy","Saving…");
+  api({action:"staff", set:true, location:state.loc, date:state.date, staff:staff})
+    .then(function(res){ doneInflight(res&&res.ok); state.staffFilled=STAFF_KEYS.some(function(k){return staff[k];}); render(); toast("Staff saved"); })
+    .catch(function(){ doneInflight(false); toast("Staff save failed",true); });
+};
+el("mRefresh").onclick=function(){hide("menuScrim");loadRoster();};
+el("mDate").onclick=function(){
+  var v=prompt("Go to which night? (YYYY-MM-DD)",state.date);
+  if(v&&/^\d{4}-\d{2}-\d{2}$/.test(v)){state.date=v;state.isToday=(v===todayISO());localStorage.setItem(LS_DATE,v);hide("menuScrim");loadRoster();}
+  else if(v){toast("Use format YYYY-MM-DD",true);}
+};
+el("mSettings").onclick=function(){hide("menuScrim");el("setUrlShrine").value=state.urls.shrine;el("setUrlCentral").value=state.urls.central;el("setUrlNewGuests").value=state.urls.newguests;show("setScrim");};
+el("setCancel").onclick=function(){hide("setScrim");if(!anyUrl())showSetupNeeded();};
+el("setSave").onclick=function(){
+  var su=el("setUrlShrine").value.trim(), cu=el("setUrlCentral").value.trim(), nu=el("setUrlNewGuests").value.trim();
+  var re=/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec/;
+  if(su && !re.test(su)){toast("Shrine URL doesn't look like a deployment link",true);return;}
+  if(cu && !re.test(cu)){toast("Central URL doesn't look like a deployment link",true);return;}
+  if(nu && !re.test(nu)){toast("New Guests URL doesn't look like a deployment link",true);return;}
+  if(!su && !cu && !nu){toast("Enter at least one URL",true);return;}
+  setSync("busy","Testing…");
+  // test whichever are provided
+  var tests=[];
+  if(su) tests.push(api({action:"ping"},su).then(function(r){return {loc:"Shrine",ok:r&&r.ok};}).catch(function(){return {loc:"Shrine",ok:false};}));
+  if(cu) tests.push(api({action:"ping"},cu).then(function(r){return {loc:"Central",ok:r&&r.ok};}).catch(function(){return {loc:"Central",ok:false};}));
+  if(nu) tests.push(api({action:"ping"},nu).then(function(r){return {loc:"New Guests",ok:r&&r.ok};}).catch(function(){return {loc:"New Guests",ok:false};}));
+  Promise.all(tests).then(function(results){
+    var bad=results.filter(function(r){return !r.ok;});
+    // save the ones that look valid regardless, so a typo in one doesn't lose the others
+    state.urls.shrine=su; state.urls.central=cu; state.urls.newguests=nu;
+    localStorage.setItem(LS_URL_SHRINE,su); localStorage.setItem(LS_URL_CENTRAL,cu); localStorage.setItem(LS_URL_NEWGUESTS,nu);
+    if(bad.length){ setSync("err","Check URL"); toast("Couldn't reach: "+bad.map(function(b){return b.loc;}).join(", "),true); }
+    else { hide("setScrim"); toast("Connected!"); }
+    if(state.loc) loadRoster(); else render();
+  });
+};
+
+function showSetupNeeded(){
+  el("list").innerHTML='<div class="setup"><h2>One-time setup</h2><p style="color:var(--muted);line-height:1.6">This app needs the links to your shelters\' Google Sheets before the first use.</p><button class="sheet-btn primary" style="max-width:240px;margin:10px auto;display:block" onclick="document.getElementById(\'setScrim\').classList.add(\'show\')">Enter Sheet Links</button></div>';
+  el("counts").innerHTML="";
+}
+
+el("mCode").onclick=function(){hide("menuScrim");showCodePrompt("Enter the new access code.");};
+el("codeCancel").onclick=function(){hide("codeScrim");};
+el("codeSave").onclick=submitCode;
+el("codeInput").addEventListener("keydown",function(e){if(e.key==="Enter")submitCode();});
+
+// Tapping the dark backdrop closes a sheet — except the code prompt while no
+// code is saved, since nothing works until one is entered.
+document.querySelectorAll(".scrim").forEach(function(s){s.addEventListener("click",function(e){
+  if(e.target!==s) return;
+  if(s.id==="codeScrim" && !state.code) return;
+  s.classList.remove("show");
+});});
+
+/* ---- Boot ---- */
+(function(){var a=el("buildStampMenu"),b=el("buildStampSet");if(a)a.textContent=APP_BUILD;if(b)b.textContent=APP_BUILD;})();
+function boot(){
+  if(!anyUrl() && !state.urls.newguests){ showSetupNeeded(); }
+  else if(state.loc==="newguests"){ openIntake(); }
+  else if(state.loc){ openLocation(); }
+  else { render(); }
+  render();
+}
+if(!state.code){
+  render();
+  el("list").innerHTML='<div class="empty"><div class="big">Locked</div>Enter the shelter access code to open the roster.</div>';
+  el("counts").innerHTML="";
+  showCodePrompt();
+}
+else { boot(); }
+</script>
+</body>
+</html>
