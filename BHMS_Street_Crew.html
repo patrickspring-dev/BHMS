@@ -799,16 +799,33 @@ function renderIntake(){
       '</div>';
   }).join("");
 }
+// Check-in time ("7:42:09 PM") -> seconds, for sorting. Times before noon
+// count as after midnight. Same rule as the close-out in Code.gs.
+function checkInSeconds(t){
+  var m = String(t||"").match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?/i);
+  if(!m) return null;
+  var h=parseInt(m[1],10), mi=parseInt(m[2],10), s=m[3]?parseInt(m[3],10):0, ap=(m[4]||"").toUpperCase();
+  if(ap==="PM" && h<12) h+=12;
+  if(ap==="AM" && h===12) h=0;
+  var secs=h*3600+mi*60+s;
+  if(h<12) secs+=24*3600;
+  return secs;
+}
 function displayOrder(guests){
-  // Unmarked first (active work queue), then stayed in arrival order,
-  // then the remaining statuses grouped (excused, turned, noshow, banned, moved), alpha within each.
+  // 0  Unmarked — the work queue — in sheet order (= last night's arrival order)
+  // 1  Yoga, in sheet order          } numbered together; this is exactly the
+  // 2  Stayed, by check-in time      } order close-out carries them to tomorrow
+  // 3+ Excused, Turned Away, No Show, Banned, Moved — grouped, alpha within each
   guests.forEach(function(g,i){ if(g._idx==null) g._idx=i; });
-  var GROUP = {excused:2, turned:3, noshow:4, banned:5, moved:6};
+  var GROUP = {excused:3, turned:4, noshow:5, banned:6, moved:7};
   function rank(g){
-    if(!g.status)            return [0, g.name.toLowerCase()];           // unmarked: top, alpha
-    if(g.status==="stayed" || g.status==="yoga")
-                             return [1, g.seq||g._idx];                  // stayed+yoga: arrival order
-    return [GROUP[g.status]||9, g.name.toLowerCase()];                   // others: grouped, alpha
+    if(!g.status)          return [0, g._idx];
+    if(g.status==="yoga")  return [1, g._idx];
+    if(g.status==="stayed"){
+      var t=checkInSeconds(g.time);
+      return [2, t===null ? 1e9+g._idx : t*1000+(g._idx%1000)];   // untimed last; ties by sheet order
+    }
+    return [GROUP[g.status]||9, g.name.toLowerCase()];
   }
   return guests.slice().sort(function(a,b){var ra=rank(a),rb=rank(b);return ra[0]-rb[0]||(ra[1]<rb[1]?-1:ra[1]>rb[1]?1:0);});
 }
