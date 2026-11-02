@@ -91,6 +91,10 @@
   .g-commentinput{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:15px;
     font-family:"Avenir Next",system-ui,sans-serif;background:var(--paper);color:var(--ink);resize:vertical;}
   .g-commentinput:focus{outline:2px solid var(--teal);outline-offset:1px;background:#fff;}
+  /* "Fix name" link — only shown inside an opened card, kept small on purpose */
+  .g-editname{padding:0 12px 12px;text-align:right;}
+  .g-editbtn{border:0;background:none;color:var(--teal);padding:4px 2px;
+    font-family:"Avenir Next",system-ui,sans-serif;font-size:13px;font-weight:700;}
 
   /* Clinic request chips on guest cards. Tap to toggle Yes/None.
      "Seen" is set by the clinic app and is read-only here. */
@@ -137,6 +141,7 @@
   .sheet-btn{flex:1;border:0;border-radius:12px;padding:14px;font-size:15px;font-weight:700;font-family:"Avenir Next",system-ui,sans-serif;}
   .sheet-btn.primary{background:var(--teal);color:#fff;} .sheet-btn.ghost{background:#fff;color:var(--navy);border:1px solid var(--line);}
   .sheet-btn.danger{background:var(--red);color:#fff;}
+  .sheet-btn:disabled{opacity:.55;}
   .close-warn{background:rgba(226,75,74,.1);border:1px solid rgba(226,75,74,.4);border-radius:11px;
     padding:11px 13px;margin-bottom:13px;font-family:"Avenir Next",system-ui,sans-serif;font-size:13.5px;
     line-height:1.5;color:#a8332f;font-weight:600;}
@@ -204,6 +209,20 @@
   <div class="sheet-actions">
     <button class="sheet-btn ghost" id="addCancel">Cancel</button>
     <button class="sheet-btn primary" id="addSave">Add to Roster</button>
+  </div>
+</div></div>
+
+<div class="scrim" id="editScrim"><div class="sheet">
+  <h2>Fix Name</h2>
+  <div class="ui" style="font-size:14px;line-height:1.5;color:var(--muted)">On tonight's roster as <b id="editOld" style="color:var(--ink)"></b></div>
+  <label>First name</label>
+  <input id="editFirst" placeholder="First" autocomplete="off" autocorrect="off" spellcheck="false">
+  <label>Last name</label>
+  <input id="editLast" placeholder="Last" autocomplete="off" autocorrect="off" spellcheck="false">
+  <div class="note">For a misspelled name, or first and last in the wrong order. This changes tonight's sheet, and the fixed name carries forward from tonight. Earlier nights stay as they were.</div>
+  <div class="sheet-actions">
+    <button class="sheet-btn ghost" id="editCancel">Cancel</button>
+    <button class="sheet-btn primary" id="editSave">Save Name</button>
   </div>
 </div></div>
 
@@ -283,7 +302,7 @@ var LS_URL_SHRINE = "bashor_url_shrine", LS_URL_CENTRAL = "bashor_url_central";
 var LS_URL_NEWGUESTS = "bashor_url_newguests";
 var LS_LOC = "bashor_loc", LS_DATE = "bashor_date";
 var LS_CODE = "bashor_access_code";   // shared with the clinic app when both are opened from the same site
-var APP_BUILD = "2026-10-23a";   // bump on every released change; shown in menu + settings
+var APP_BUILD = "2026-11-02b";   // bump on every released change; shown in menu + settings
 var el = function(id){ return document.getElementById(id); };
 
 /* Built-in default URLs (live sheets) so the app works out of the box — no
@@ -305,6 +324,7 @@ var state = {
   guests: [],
   intake: [],          // New Guests cards for the current night
   openCard: null,
+  editing: null,       // name of the guest open in the Fix Name sheet
   loading: false,
   inflight: 0
 };
@@ -411,6 +431,14 @@ function api(params, urlOverride){
   });
 }
 
+// A save came back "no_guest": the name on this phone no longer matches the
+// sheet — almost always because another volunteer just fixed the spelling.
+function noGuestHint(res){
+  if(res && res.error === "no_guest"){
+    toast("That guest's name was changed on another phone. Tap ☰ → Refresh, then try again.", true);
+  }
+}
+
 /* ---- Access code ---- */
 // A shelter script answered "wrong or missing code": forget the saved code
 // and ask for it again. (Happens on first use and whenever Patrick changes it.)
@@ -430,7 +458,7 @@ function showCodePrompt(msg){
   el("codeMsg").textContent = msg || "Enter the shelter access code. You only need to do this once on this phone.";
   el("codeCancel").style.display = state.code ? "" : "none";   // no way out until a code is saved
   if(el("codeScrim").classList.contains("show")) return;     // already open: don't wipe what they're typing
-  ["addScrim","closeScrim","menuScrim","staffScrim","setScrim"].forEach(hide);
+  ["addScrim","editScrim","closeScrim","menuScrim","staffScrim","setScrim"].forEach(hide);
   el("codeInput").value = "";
   show("codeScrim");
   setTimeout(function(){ el("codeInput").focus(); }, 50);
@@ -477,7 +505,8 @@ function loadRoster(){
       state.loading=false;
       if(res && res.ok){
         state.guests = (res.guests||[]).map(function(g){
-          return {name:g.name, status:g.status, time:g.status==="stayed"?cleanTime(g.raw):null,
+          return {name:g.name, first:g.first, last:g.last,   // first/last: separate, for Fix Name
+                  status:g.status, time:g.status==="stayed"?cleanTime(g.raw):null,
                   comment:g.comment||"",
                   medical: g.medical || {state:"none",time:""},
                   foot:    g.foot    || {state:"none",time:""},
@@ -572,9 +601,15 @@ function openLocation(){
 }
 
 /* ---- Optimistic actions ---- */
+// While a name fix is saving, hold other taps on that guest — they'd be sent
+// under the old name and could land after the rename.
+function busyRenaming(g){
+  if(g && g.renaming){ toast("Saving the name change — one moment"); return true; }
+  return false;
+}
 function markGuest(name, status){
   var g = state.guests.find(function(x){return x.name===name;});
-  if(!g) return;
+  if(!g || busyRenaming(g)) return;
   if(g.status===status){ status=null; }            // toggle off
   g.status = status;
   g.time = status==="stayed" ? nowClock() : null;
@@ -583,7 +618,7 @@ function markGuest(name, status){
   state.inflight++; setSync("busy","Saving…");
   api({action:"mark", location:state.loc, date:state.date, name:name,
        status: status||"clear", time:g.time||""})
-    .then(function(res){ g.pending=false; doneInflight(res && res.ok); })
+    .then(function(res){ g.pending=false; noGuestHint(res); doneInflight(res && res.ok); })
     .catch(function(){ g.pending=false; doneInflight(false); toast("Save failed — tap Refresh", true); });
 }
 function doneInflight(ok){
@@ -597,10 +632,11 @@ function saveComment(name, text){
   if(!g) return;
   g._draftComment = null;                 // edit committed, drop the draft
   if((g.comment||"") === text) { render(); return; }   // no change
+  if(busyRenaming(g)) return;
   g.comment = text; g.pending = true; render();
   state.inflight++; setSync("busy","Saving…");
   api({action:"comment", location:state.loc, date:state.date, name:name, comment:text})
-    .then(function(res){ g.pending=false; doneInflight(res && res.ok); })
+    .then(function(res){ g.pending=false; noGuestHint(res); doneInflight(res && res.ok); })
     .catch(function(){ g.pending=false; doneInflight(false); toast("Comment save failed — tap Refresh", true); });
 }
 
@@ -609,7 +645,7 @@ function saveComment(name, text){
 // "Seen" chips are owned by the clinic app — tapping them here does nothing.
 function toggleClinic(name, service){
   var g = state.guests.find(function(x){return x.name===name;});
-  if(!g) return;
+  if(!g || busyRenaming(g)) return;
   var cur = g[service] || {state:"none",time:""};
   if(cur.state === "seen") return;          // can't unmark "seen" from here
   var nextAction, nextState;
@@ -619,8 +655,72 @@ function toggleClinic(name, service){
   state.inflight++; setSync("busy","Saving…");
   api({action:"clinicrequest", location:state.loc, date:state.date, name:name,
        service:service, op:nextAction})
-    .then(function(res){ g.pending=false; doneInflight(res && res.ok); })
+    .then(function(res){ g.pending=false; noGuestHint(res); doneInflight(res && res.ok); })
     .catch(function(){ g.pending=false; doneInflight(false); toast("Clinic save failed — tap Refresh", true); });
+}
+
+/* ---- Fix a guest's name (misspelling / first-last swapped) ---- */
+// Not optimistic: the card keeps its old name until the sheet confirms, so a
+// refused change (night closed, duplicate) never leaves the phone out of step.
+function cleanNamePart(s){ return String(s||"").trim().replace(/\s+/g," "); }
+function openEditName(name){
+  var g = state.guests.find(function(x){return x.name===name;});
+  if(!g) return;
+  if(g.pending){ toast("Still saving this guest — try again in a moment", true); return; }
+  var first, last;
+  if(g.first!=null || g.last!=null){ first=g.first||""; last=g.last||""; }
+  else { var sp=g.name.indexOf(" "); first=sp<0?g.name:g.name.slice(0,sp); last=sp<0?"":g.name.slice(sp+1); }
+  state.editing = name;
+  el("editOld").textContent = g.name;
+  el("editFirst").value = first;
+  el("editLast").value = last;
+  el("editSave").disabled = false;
+  show("editScrim");
+  setTimeout(function(){ el("editFirst").focus(); }, 50);
+}
+function saveEditName(){
+  var g = state.guests.find(function(x){return x.name===state.editing;});
+  if(!g){ hide("editScrim"); state.editing=null; return; }
+  var first = cleanNamePart(el("editFirst").value), last = cleanNamePart(el("editLast").value);
+  if(!first){ el("editFirst").focus(); return; }
+  var newName = (first+" "+last).trim();
+  var oldFirst = g.first!=null ? g.first : null, oldLast = g.last!=null ? g.last : null;
+  if(newName===g.name && (oldFirst===null || (first===oldFirst && last===(oldLast||"")))){
+    hide("editScrim"); state.editing=null; return;   // nothing changed
+  }
+  var clash = state.guests.some(function(x){ return x!==g && x.name.toLowerCase()===newName.toLowerCase(); });
+  if(clash){ toast(newName+" is already on tonight's roster", true); return; }
+  if(g.pending){ toast("Still saving this guest — try again in a moment", true); return; }
+
+  var oldName = g.name;
+  g.renaming = true; g.pending = true; el("editSave").disabled = true; render();
+  state.inflight++; setSync("busy","Saving name…");
+  api({action:"rename", location:state.loc, date:state.date, name:oldName, first:first, last:last})
+    .then(function(res){
+      g.renaming = false; g.pending = false; el("editSave").disabled = false;
+      if(res && res.ok){
+        g.name  = res.name || newName;
+        g.first = res.first!=null ? res.first : first;
+        g.last  = res.last!=null  ? res.last  : last;
+        if(state.openCard===oldName) state.openCard = g.name;
+        hide("editScrim"); state.editing = null;
+        doneInflight(true);
+        toast(res.unchanged ? "No change needed" : "Name changed to "+g.name);
+        return;
+      }
+      doneInflight(false);
+      var e = res && res.error;
+      toast(
+        (e==="night_closed" || e==="duplicate" || e==="no_first") ? res.message :
+        e==="no_guest"       ? "Couldn't find "+oldName+" on the sheet — someone may have changed it. Tap ☰ → Refresh." :
+        e==="unknown_action" ? "The shelter sheet needs an update before names can be fixed. Tell Patrick." :
+        e==="bad_code"       ? "Access code needed — enter it and try again." :
+                               "Name change failed — try again", true);
+    })
+    .catch(function(){
+      g.renaming = false; g.pending = false; el("editSave").disabled = false;
+      doneInflight(false); toast("Name change failed — check connection", true);
+    });
 }
 
 /* ---- Rendering ---- */
@@ -710,7 +810,8 @@ function render(){
       (isOpen ? ('<div class="g-commentbox">'+
         '<label class="g-commentlabel">Comment (carries to next night)</label>'+
         '<textarea class="g-commentinput" data-cmt="'+nm+'" rows="2" placeholder="Add a note for later crews…">'+escapeHtml(g._draftComment!=null?g._draftComment:(g.comment||""))+'</textarea>'+
-      '</div>') : '')+
+      '</div>'+
+      '<div class="g-editname"><button class="g-editbtn" data-edit="'+nm+'">✏️ Fix name spelling</button></div>') : '')+
       '</div>';
   }).join("");
 }
@@ -838,6 +939,9 @@ el("list").addEventListener("click",function(e){
   if(e.target.closest("[data-ngtoggle]")) return;  // tapping the card head does nothing in intake view
   // ignore taps inside the comment editor
   if(e.target.closest("[data-cmt]")) return;
+  // "Fix name spelling" link inside an opened card
+  var ed=e.target.closest("[data-edit]");
+  if(ed){openEditName(ed.getAttribute("data-edit"));return;}
   // clinic chip taps (handled before toggle so tapping a chip doesn't open/close the card)
   var chip=e.target.closest("[data-clinic]");
   if(chip){var cp=chip.getAttribute("data-clinic").split("|");toggleClinic(cp[0],cp[1]);return;}
@@ -882,6 +986,11 @@ el("addSave").onclick=function(){
 };
 el("addLast").addEventListener("keydown",function(e){if(e.key==="Enter")el("addSave").click();});
 el("addFirst").addEventListener("keydown",function(e){if(e.key==="Enter")el("addLast").focus();});
+
+el("editCancel").onclick=function(){hide("editScrim");state.editing=null;};
+el("editSave").onclick=saveEditName;
+el("editFirst").addEventListener("keydown",function(e){if(e.key==="Enter")el("editLast").focus();});
+el("editLast").addEventListener("keydown",function(e){if(e.key==="Enter"&&!el("editSave").disabled)saveEditName();});
 
 el("openClose").onclick=function(){
   if(!state.loc){toast("Pick a location first",true);return;}
