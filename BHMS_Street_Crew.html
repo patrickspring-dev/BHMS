@@ -302,7 +302,7 @@ var LS_URL_SHRINE = "bashor_url_shrine", LS_URL_CENTRAL = "bashor_url_central";
 var LS_URL_NEWGUESTS = "bashor_url_newguests";
 var LS_LOC = "bashor_loc", LS_DATE = "bashor_date";
 var LS_CODE = "bashor_access_code";   // shared with the clinic app when both are opened from the same site
-var APP_BUILD = "2026-11-02b";   // bump on every released change; shown in menu + settings
+var APP_BUILD = "2026-11-03a";   // bump on every released change; shown in menu + settings
 var el = function(id){ return document.getElementById(id); };
 
 /* Built-in default URLs (live sheets) so the app works out of the box — no
@@ -341,6 +341,11 @@ var STATUSES = {
 };
 var ROLLOVER = {stayed:1,yoga:1,excused:1,turned:1};
 var DROP = {noshow:1,banned:1,moved:1};
+
+// "Moved" is location-aware: on Shrine the button reads "Moved to Central"
+// and vice versa. The destination is whichever shelter this view is NOT.
+function otherShelter(loc){ return loc==="central" ? "shrine" : "central"; }
+function otherShelterName(loc){ return loc==="central" ? "Shrine" : "Central"; }
 
 // New-Guests assignment options. `value` is the exact string written back to
 // the agency sheet's Guest Status column (must match its dropdown). `shelter`
@@ -610,16 +615,63 @@ function busyRenaming(g){
 function markGuest(name, status){
   var g = state.guests.find(function(x){return x.name===name;});
   if(!g || busyRenaming(g)) return;
+  var prevStatus = g.status;                       // for the Moved hand-off below
   if(g.status===status){ status=null; }            // toggle off
   g.status = status;
   g.time = status==="stayed" ? nowClock() : null;
   g.seq  = status==="stayed" ? Date.now() : null;   // true arrival order, immune to clock-string sorting
   g.pending = true; render();
   state.inflight++; setSync("busy","Saving…");
-  api({action:"mark", location:state.loc, date:state.date, name:name,
+  var becameMoved  = status==="moved" && prevStatus!=="moved";
+  var clearedMoved = prevStatus==="moved" && status!=="moved";
+  var loc = state.loc, date = state.date;
+  api({action:"mark", location:loc, date:date, name:name,
        status: status||"clear", time:g.time||""})
-    .then(function(res){ g.pending=false; noGuestHint(res); doneInflight(res && res.ok); })
+    .then(function(res){
+      g.pending=false; noGuestHint(res); doneInflight(res && res.ok);
+      // Only hand off once this shelter's mark has actually saved.
+      if(res && res.ok && (becameMoved || clearedMoved)) handleMovedHandoff(g, becameMoved, loc, date);
+    })
     .catch(function(){ g.pending=false; doneInflight(false); toast("Save failed — tap Refresh", true); });
+}
+
+// "Moved to [other shelter]": add the guest to the other shelter's roster for
+// the same night, already marked Stayed, with his comment. Undoing the move
+// (tapping Moved again, or picking another status) takes him back off — unless
+// he was already on that roster before the move, in which case he's left alone.
+// Each shelter has its own script, so this is a second call from the phone. If
+// it fails, the toast says so and the crew fixes the other sheet by hand.
+function handleMovedHandoff(g, addToOther, loc, date){
+  var dest = otherShelter(loc), destName = otherShelterName(loc), destUrl = state.urls[dest];
+  if(!destUrl){ toast(destName+" isn't connected in Settings — add "+g.name+" there by hand", true); return; }
+  if(!addToOther && g.movedWasThere){ g.movedWasThere=false; return; }   // we didn't add him, so don't remove him
+  var params = addToOther
+    ? {action:"add", location:dest, date:date, name:g.name, status:"stayed", comment:(g.comment||""), requireTab:true}
+    : {action:"remove", location:dest, date:date, name:g.name};
+  state.inflight++; setSync("busy",(addToOther?"Sending to ":"Removing from ")+destName+"…");
+  api(params, destUrl)
+    .then(function(res){
+      if(res && res.ok){
+        doneInflight(true);
+        if(addToOther){
+          g.movedWasThere = !!res.duplicate;
+          toast(res.duplicate ? g.name+" was already on "+destName+"'s roster" : g.name+" added to "+destName);
+        } else {
+          toast(g.name+" removed from "+destName);
+        }
+        return;
+      }
+      if(!addToOther && res && res.error==="no_guest"){ doneInflight(true); return; }   // already gone
+      doneInflight(false);
+      var why = (res && res.error==="no_tab") ? destName+"'s roster for tonight isn't open yet"
+              : (res && res.error==="unknown_action") ? destName+"'s sheet needs an update"
+              : (res ? (res.message||res.error||"unknown error") : "no response");
+      toast("Couldn't "+(addToOther?"add "+g.name+" to ":"remove "+g.name+" from ")+destName+" ("+why+"). Fix "+destName+"'s sheet by hand.", true);
+    })
+    .catch(function(){
+      doneInflight(false);
+      toast("Couldn't reach "+destName+" to "+(addToOther?"add ":"remove ")+g.name+". Fix "+destName+"'s sheet by hand.", true);
+    });
 }
 function doneInflight(ok){
   state.inflight=Math.max(0,state.inflight-1);
@@ -784,7 +836,9 @@ function render(){
     var isOpen=g.name===state.openCard, dropped=DROP[g.status];
     var badge = (g.status==="stayed" || g.status==="yoga") ? '<div class="g-order stayed">'+(++seq)+'</div>' : '<div class="g-order">·</div>';
     var stCls=g.status?"st-"+g.status:"st-none";
-    var stTxt=g.status?(STATUSES[g.status].short+(g.time?" "+g.time:"")):"Tap to mark";
+    var stTxt = !g.status ? "Tap to mark"
+      : g.status==="moved" ? "Moved → "+otherShelterName(loc)
+      : STATUSES[g.status].short+(g.time?" "+g.time:"");
     var hasComment = (g.comment||"").trim().length>0;
     var commentChip = hasComment
       ? '<div class="g-comment-snippet">💬 '+escapeHtml((g.comment||"").length>60?(g.comment.slice(0,60)+"…"):g.comment)+'</div>'
@@ -817,7 +871,8 @@ function render(){
 }
 function actBtn(g,key){
   var sel=g.status===key?"sel-"+key:"";
-  return '<button class="act '+sel+'" data-act="'+escapeHtml(g.name)+'|'+key+'">'+STATUSES[key].label+'</button>';
+  var label = key==="moved" ? "Moved to "+otherShelterName(state.loc) : STATUSES[key].label;
+  return '<button class="act '+sel+'" data-act="'+escapeHtml(g.name)+'|'+key+'">'+label+'</button>';
 }
 
 /* ---- Render the New Guests intake list ---- */
