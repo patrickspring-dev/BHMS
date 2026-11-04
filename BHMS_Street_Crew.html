@@ -302,7 +302,7 @@ var LS_URL_SHRINE = "bashor_url_shrine", LS_URL_CENTRAL = "bashor_url_central";
 var LS_URL_NEWGUESTS = "bashor_url_newguests";
 var LS_LOC = "bashor_loc", LS_DATE = "bashor_date";
 var LS_CODE = "bashor_access_code";   // shared with the clinic app when both are opened from the same site
-var APP_BUILD = "2026-11-03a";   // bump on every released change; shown in menu + settings
+var APP_BUILD = "2026-11-04a";   // bump on every released change; shown in menu + settings
 var el = function(id){ return document.getElementById(id); };
 
 /* Built-in default URLs (live sheets) so the app works out of the box — no
@@ -542,6 +542,12 @@ function nowClock(){
 /* ---- New Guests intake (the agency sheet) ---- */
 function loadIntake(){
   if(!state.urls.newguests){ render(); toast("New Guests isn't connected yet — open Settings", true); return; }
+  if(_intakeBusy || _intakeJobs.length){
+    // Saves still going out: wait for them, so the reload shows what was just picked.
+    state.loading=true; render();
+    whenIntakeIdle(function(){ if(isIntakeView()) loadIntake(); else { state.loading=false; render(); } });
+    return;
+  }
   state.loading=true; render(); setSync("busy","Loading…");
   api({action:"ngroster", date:state.date}, state.urls.newguests)
     .then(function(res){
@@ -578,13 +584,88 @@ function openIntake(){
     .catch(function(){ state.loading=false; setSync("err","Offline?"); toast("No connection to the New Guests sheet", true); render(); });
 }
 
-// Tap an assignment button on an intake card. Local only until Close Night.
+// Tap an assignment button on an intake card. Saves right away:
+//   1. writes the choice to the agency sheet's Guest Status column, then
+//   2. if it's a shelter, adds him to that shelter's roster already marked
+//      Stayed (so he can go straight onto the clinic lists). Switching him
+//      to the other shelter, or to No Show / Turned Away / Banned, takes him
+//      back off the roster he was on — unless he was already on it before.
+// The agency sheet has no "blank" status, so a pick can be changed but not
+// cleared; tapping the chosen option again does nothing.
+function intakeOpt(key){ return INTAKE_OPTIONS.find(function(o){return o.key===key;}) || null; }
 function assignIntake(name, key){
   var g = state.intake.find(function(x){return x.name===name;});
   if(!g) return;
-  g.assigned = (g.assigned===key) ? null : key;   // toggle off
-  render();
+  if(g.assigned===key){ toast("Already set — tap a different option to change it"); return; }
+  if(g.pending){ toast("Still saving "+g.name+" — one moment"); return; }
+  var prev = intakeOpt(g.assigned), next = intakeOpt(key), date = state.date;
+  g.assigned = key; g.pending = true; render();
+
+  var fromShelter = prev ? prev.shelter : null, toShelter = next.shelter;
+  intakeQueue(function(done){
+    api({action:"ngassign", date:date, name:g.name, status:next.value}, state.urls.newguests)
+      .then(function(res){
+        if(!(res && res.ok)){
+          g.assigned = prev ? prev.key : null;              // agency sheet didn't take it: undo the pick
+          var why = res ? (res.message||res.error||"unknown error") : "no response";
+          toast("Couldn't save "+g.name+" ("+why+") — try again", true);
+          return finish(false);
+        }
+        if(fromShelter === toShelter) return finish(true);  // e.g. Shrine ↔ Shrine·LM: roster unchanged
+        removeFromRoster(function(){ addToRoster(function(){ finish(true); }); });
+      })
+      .catch(function(){
+        g.assigned = prev ? prev.key : null;
+        toast("No connection — "+g.name+" wasn't saved. Try again.", true);
+        finish(false);
+      });
+
+    function removeFromRoster(then){
+      if(!fromShelter || !state.urls[fromShelter]) return then();
+      if(g.rosterWasThere===fromShelter){ g.rosterWasThere=null; return then(); }   // we didn't add him, so leave him
+      var nm = fromShelter==="shrine"?"Shrine":"Central";
+      api({action:"remove", location:fromShelter, date:date, name:g.name}, state.urls[fromShelter])
+        .then(function(res){
+          if(!(res && (res.ok || res.error==="no_guest"))) toast("Couldn't take "+g.name+" off "+nm+"'s roster — remove him there by hand", true);
+          then();
+        })
+        .catch(function(){ toast("Couldn't reach "+nm+" — remove "+g.name+" from its roster by hand", true); then(); });
+    }
+    function addToRoster(then){
+      if(!toShelter) return then();
+      var nm = toShelter==="shrine"?"Shrine":"Central";
+      if(!state.urls[toShelter]){ toast(nm+" isn't connected in Settings — add "+g.name+" there by hand", true); return then(); }
+      api({action:"add", location:toShelter, date:date, name:g.name, status:"stayed", requireTab:true}, state.urls[toShelter])
+        .then(function(res){
+          if(res && res.ok){
+            g.rosterWasThere = res.duplicate ? toShelter : null;
+            toast(res.duplicate ? g.name+" was already on "+nm+"'s roster" : g.name+" admitted to "+nm);
+          } else {
+            var why = (res && res.error==="no_tab") ? nm+"'s roster for tonight isn't open yet"
+                    : (res ? (res.message||res.error||"unknown error") : "no response");
+            toast("Saved on the intake list, but couldn't add "+g.name+" to "+nm+" ("+why+"). Add him there by hand.", true);
+          }
+          then();
+        })
+        .catch(function(){ toast("Saved on the intake list, but couldn't reach "+nm+". Add "+g.name+" there by hand.", true); then(); });
+    }
+    function finish(ok){ g.pending = false; render(); setSync(ok?"ok":"err", ok?("Saved "+nowClock()):"Save failed"); done(); }
+  });
 }
+
+// Run intake saves one at a time. Each script handles one request at a time,
+// so firing many at once makes the later ones queue up and time out.
+var _intakeJobs = [], _intakeBusy = false, _intakeIdle = [];
+function intakeQueue(job){ _intakeJobs.push(job); pumpIntake(); }
+function pumpIntake(){
+  if(_intakeBusy) return;
+  var job = _intakeJobs.shift();
+  if(!job){ var w=_intakeIdle; _intakeIdle=[]; w.forEach(function(f){ f(); }); return; }
+  _intakeBusy = true; setSync("busy","Saving…");
+  job(function(){ _intakeBusy = false; setTimeout(pumpIntake, 300); });
+}
+// Call fn once every queued intake save has finished.
+function whenIntakeIdle(fn){ if(!_intakeBusy && !_intakeJobs.length) fn(); else _intakeIdle.push(fn); }
 
 // Open a location: ask the sheet which night to show (today if it exists,
 // else the most recent existing night so the crew can close it out).
@@ -785,9 +866,9 @@ function render(){
   var bng=el("btnNewGuests"); if(bng) bng.classList.toggle("on",loc==="newguests");
 
   if(!anyUrl() && !state.urls.newguests){ return; }
-  // bottom bar: hide Add Guest in intake view, relabel Close → Admit & Send
+  // bottom bar: hide Add Guest in intake view, relabel Close → Refresh List
   el("openAdd").style.display = isIntakeView() ? "none" : "";
-  el("openClose").textContent = isIntakeView() ? "Admit & Send ➜" : "Close Night ➜";
+  el("openClose").textContent = isIntakeView() ? "⟳ Refresh List" : "Close Night ➜";
   if(!loc){
     el("locName").textContent="Select Location";
     el("dateLabel").textContent="Choose Shrine or Central to begin";
@@ -1049,7 +1130,7 @@ el("editLast").addEventListener("keydown",function(e){if(e.key==="Enter"&&!el("e
 
 el("openClose").onclick=function(){
   if(!state.loc){toast("Pick a location first",true);return;}
-  if(isIntakeView()){ openIntakeCommit(); return; }
+  if(isIntakeView()){ loadIntake(); return; }   // picks save as they're tapped; this just re-reads the list
   // Gate 1: this shelter's Tonight's Staff must be fully entered before closing.
   setSync("busy","Checking staff…");
   api({action:"staff", location:state.loc, date:state.date})
@@ -1124,7 +1205,6 @@ function buildCloseDialog(){
 }
 el("closeCancel").onclick=function(){hide("closeScrim");};
 el("closeConfirm").onclick=function(){
-  if(isIntakeView()){ commitIntake(); return; }
   hide("closeScrim"); setSync("busy","Closing night…");
   doClose(false);
 };
@@ -1160,96 +1240,6 @@ function doClose(confirmOverwrite){
       } else { setSync("err","Close failed"); toast("Close-out failed",true); }
     })
     .catch(function(){setSync("err","Close failed");toast("Close-out failed — check connection",true);});
-}
-
-/* ---- Commit New Guests assignments ---- */
-function openIntakeCommit(){
-  var c={shrine:0, central:0, rejected:0, unassigned:0};
-  state.intake.forEach(function(g){
-    if(!g.assigned){ c.unassigned++; return; }
-    var o=INTAKE_OPTIONS.find(function(x){return x.key===g.assigned;});
-    if(!o){ c.unassigned++; return; }
-    if(o.shelter==="shrine") c.shrine++;
-    else if(o.shelter==="central") c.central++;
-    else c.rejected++;
-  });
-  var admit=c.shrine+c.central;
-  var warn = c.unassigned>0
-    ? '<div class="close-warn">⚠️ '+c.unassigned+' guest'+(c.unassigned===1?'':'s')+' still unassigned. '+(c.unassigned===1?'It':'They')+' will be left blank on the agency sheet and <b>not</b> admitted. Go back and assign, or send the rest now.</div>'
-    : '';
-  el("closeSummary").innerHTML=warn+
-    "New-guest intake ("+fmtDate(state.date)+"):<br>"+
-    "• <b>"+c.shrine+"</b> → Shrine, <b>"+c.central+"</b> → Central<br>"+
-    "• <b>"+c.rejected+"</b> No Show / Turned Away / Banned<br><br>"+
-    "This writes each assignment to the <b>agency sheet</b> and adds the <b>"+admit+
-    "</b> admitted guest"+(admit===1?'':'s')+" to "+(c.shrine&&c.central?"their shelters'":"the")+" roster"+(admit===1?'':'s')+" for tonight.";
-  el("closeConfirm").textContent = "Admit & Send ➜";
-  el("closeConfirm").className = "sheet-btn primary";
-  el("closeScrim").querySelector(".sheet h2").textContent = "Admit New Guests";
-  // hide the generic rollover note for this view
-  var note=el("closeScrim").querySelector(".note"); if(note) note.style.display="none";
-  show("closeScrim");
-}
-
-function commitIntake(){
-  var assigned=state.intake.filter(function(g){return g.assigned;});
-  if(assigned.length===0){ hide("closeScrim"); toast("Nothing assigned yet"); return; }
-  hide("closeScrim"); setSync("busy","Admitting…");
-  state.inflight++;
-  assigned.forEach(function(g){ g.pending=true; });
-  render();
-
-  // Build a flat list of write steps. Run them ONE AT A TIME — the Apps Script
-  // backend serializes on a script lock, so firing many requests at once makes
-  // the later ones queue and time out (which looked like "some failed" even
-  // though earlier writes landed). Sequential calls avoid the pile-up entirely.
-  var steps=[];
-  assigned.forEach(function(g){
-    var o=INTAKE_OPTIONS.find(function(x){return x.key===g.assigned;});
-    if(!o) return;
-    // a) write status back to the agency sheet
-    steps.push({url:state.urls.newguests, params:{action:"ngassign", date:state.date, name:g.name, status:o.value}, name:g.name});
-    // b) if admitted to a shelter, add them there already marked Stayed
-    if(o.shelter && state.urls[o.shelter]){
-      steps.push({url:state.urls[o.shelter], params:{action:"add", location:o.shelter, date:state.date, name:g.name, status:"stayed"}, name:g.name});
-    }
-  });
-
-  var failedNames={};
-  var failReasons={};
-  var i=0;
-  function runNext(){
-    if(i>=steps.length){ finishCommit(failedNames, failReasons, assigned.length); return; }
-    var s=steps[i++];
-    setSync("busy","Admitting… ("+i+"/"+steps.length+")");
-    api(s.params, s.url)
-      .then(function(r){
-        if(!(r&&r.ok)){
-          failedNames[s.name]=true;
-          var reason = r ? (r.error||r.message||"unknown") : "no response";
-          if(r && r.error==="exception"){ reason = "exception@"+(r.stage||"?")+" "+(r.message||""); }
-          failReasons[s.name]=(s.params.action==="ngassign"?"agency-sheet":"roster")+": "+reason;
-        }
-      })
-      .catch(function(e){ failedNames[s.name]=true; failReasons[s.name]=(s.params.action==="ngassign"?"agency-sheet":"roster")+": neterr "+(e&&e.message?e.message:String(e)); })
-      .then(function(){ setTimeout(runNext, 600); });   // pause between calls so back-to-back POSTs don't fail
-  }
-  runNext();
-}
-
-function finishCommit(failedNames, failReasons, totalAssigned){
-  state.intake.forEach(function(g){ g.pending=false; });
-  state.inflight=Math.max(0,state.inflight-1);
-  var failedList=Object.keys(failedNames);
-  if(failedList.length){
-    setSync("err","Some failed");
-    var detail=failedList.map(function(n){ return n+" — "+(failReasons[n]||"?"); }).join("; ");
-    toast(failedList.length+" didn't fully save: "+detail+" — tap Refresh and retry", true);
-  } else {
-    setSync("ok","Sent "+nowClock());
-    toast(totalAssigned+" guest"+(totalAssigned===1?'':'s')+" admitted & sent");
-  }
-  loadIntake();   // reload from the agency sheet to confirm written state
 }
 
 el("openMenu").onclick=function(){show("menuScrim");};
