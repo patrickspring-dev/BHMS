@@ -163,6 +163,11 @@
     font-size:13px;font-weight:600;line-height:1.4;display:flex;align-items:center;gap:8px;}
   .nottoday .jump{margin-left:auto;background:var(--amber);color:#fff;border:0;border-radius:8px;
     padding:7px 12px;font-family:inherit;font-size:12.5px;font-weight:700;white-space:nowrap;}
+  /* Shrine gate codes — big and readable in the dark */
+  .gate-row{display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid var(--line);
+    border-radius:13px;padding:16px 18px;margin:9px 0;font-family:"Avenir Next",system-ui,sans-serif;}
+  .gate-name{font-size:17px;font-weight:600;color:var(--ink);}
+  .gate-code{font-size:30px;font-weight:800;letter-spacing:.08em;color:var(--shrine);font-variant-numeric:tabular-nums;}
 </style>
 </head>
 <body>
@@ -229,7 +234,7 @@
 <div class="scrim" id="closeScrim"><div class="sheet">
   <h2>Close Out Tonight</h2>
   <div id="closeSummary" class="ui" style="font-size:14.5px;line-height:1.7;color:var(--ink)"></div>
-  <div class="note">This creates tomorrow's tab in the sheet. Stayed, Excused, and Turned Away guests carry over in arrival order. No-Shows and Banned drop off. Unmarked guests count as No-Show. Tonight's tab stays untouched as a reference.</div>
+  <div class="note">This creates tomorrow's tab in the sheet. Stayed, Excused, and Turned Away guests carry over in arrival order. No-Shows and Banned drop off. Tonight's tab stays untouched as a reference.</div>
   <div class="sheet-actions">
     <button class="sheet-btn ghost" id="closeCancel">Not Yet</button>
     <button class="sheet-btn primary" id="closeConfirm">Roll to Next Night</button>
@@ -239,12 +244,21 @@
 <div class="scrim" id="menuScrim"><div class="sheet">
   <h2>Menu</h2>
   <button class="menu-item" id="mStaff"><span class="ic">👥</span><span>Tonight's staff<small id="staffSub">Street crew, trainer, volunteers</small></span></button>
+  <button class="menu-item" id="mGate"><span class="ic">🔐</span><span>Shrine Gate Codes<small>Alley, driveway, and walk-in gates</small></span></button>
   <button class="menu-item" id="mRefresh"><span class="ic">⟳</span><span>Refresh from sheet<small>Pull the latest — see other volunteers' changes</small></span></button>
   <button class="menu-item" id="mDate"><span class="ic">📅</span><span>Go to a different night<small id="dateSub">—</small></span></button>
   <button class="menu-item" id="mSettings"><span class="ic">⚙︎</span><span>Connection settings<small>Set or change the sheet links</small></span></button>
   <button class="menu-item" id="mCode"><span class="ic">🔑</span><span>Access code<small>Change the code saved on this phone</small></span></button>
   <div class="note"><b>Check-in app · Build <span id="buildStampMenu"></span></b><br>Everyone shares one live Google Sheet per shelter. Changes save instantly for the whole crew. Needs internet at the door.</div>
   <div class="sheet-actions"><button class="sheet-btn ghost" id="menuClose">Done</button></div>
+</div></div>
+
+<div class="scrim" id="gateScrim"><div class="sheet">
+  <h2>Shrine Gate Codes</h2>
+  <div class="gate-row"><span class="gate-name">Alley</span><span class="gate-code">1982</span></div>
+  <div class="gate-row"><span class="gate-name">Driveway</span><span class="gate-code">0331#</span></div>
+  <div class="gate-row"><span class="gate-name">Walk-in</span><span class="gate-code">0618</span></div>
+  <div class="sheet-actions"><button class="sheet-btn ghost" id="gateClose">Done</button></div>
 </div></div>
 
 <div class="scrim" id="staffScrim"><div class="sheet">
@@ -302,7 +316,7 @@ var LS_URL_SHRINE = "bashor_url_shrine", LS_URL_CENTRAL = "bashor_url_central";
 var LS_URL_NEWGUESTS = "bashor_url_newguests";
 var LS_LOC = "bashor_loc", LS_DATE = "bashor_date";
 var LS_CODE = "bashor_access_code";   // shared with the clinic app when both are opened from the same site
-var APP_BUILD = "2026-11-04a";   // bump on every released change; shown in menu + settings
+var APP_BUILD = "2026-11-12a";   // bump on every released change; shown in menu + settings
 var el = function(id){ return document.getElementById(id); };
 
 /* Built-in default URLs (live sheets) so the app works out of the box — no
@@ -463,7 +477,7 @@ function showCodePrompt(msg){
   el("codeMsg").textContent = msg || "Enter the shelter access code. You only need to do this once on this phone.";
   el("codeCancel").style.display = state.code ? "" : "none";   // no way out until a code is saved
   if(el("codeScrim").classList.contains("show")) return;     // already open: don't wipe what they're typing
-  ["addScrim","editScrim","closeScrim","menuScrim","staffScrim","setScrim"].forEach(hide);
+  ["addScrim","editScrim","closeScrim","menuScrim","staffScrim","setScrim","gateScrim"].forEach(hide);
   el("codeInput").value = "";
   show("codeScrim");
   setTimeout(function(){ el("codeInput").focus(); }, 50);
@@ -509,16 +523,7 @@ function loadRoster(){
     .then(function(res){
       state.loading=false;
       if(res && res.ok){
-        state.guests = (res.guests||[]).map(function(g){
-          return {name:g.name, first:g.first, last:g.last,   // first/last: separate, for Fix Name
-                  status:g.status, time:g.status==="stayed"?cleanTime(g.raw):null,
-                  comment:g.comment||"",
-                  medical: g.medical || {state:"none",time:""},
-                  foot:    g.foot    || {state:"none",time:""},
-                  isNew:false, pending:false};
-        });
-        var st=res.staff||{};
-        state.staffFilled = ["streetCrew","trainer","dinner","overnight"].some(function(k){return (st[k]||"").trim();});
+        applyRoster(res);
         setSync("ok","Synced "+nowClock());
       } else {
         setSync("err","Couldn't load");
@@ -527,6 +532,26 @@ function loadRoster(){
       render();
     })
     .catch(function(){ state.loading=false; setSync("err","Offline?"); toast("No connection to the sheet", true); render(); });
+}
+// Replace this phone's roster with what the sheet just sent back.
+function applyRoster(res){
+  state.guests = (res.guests||[]).map(function(g){
+    return {name:g.name, first:g.first, last:g.last,   // first/last: separate, for Fix Name
+            status:g.status, time:g.status==="stayed"?cleanTime(g.raw):null,
+            comment:g.comment||"",
+            medical: g.medical || {state:"none",time:""},
+            foot:    g.foot    || {state:"none",time:""},
+            isNew:false, pending:false};
+  });
+  var st=res.staff||{};
+  state.staffFilled = ["streetCrew","trainer","dinner","overnight"].some(function(k){return (st[k]||"").trim();});
+}
+// The "everyone needs a status" refusal, shared by the app's own check and the
+// script's (in case an old copy of the app slips past).
+function unmarkedToast(names){
+  var n = names.length;
+  var list = names.slice(0,5).join(", ") + (n>5 ? "…" : "");
+  toast("Can't close yet — all guests need their status marked. "+n+" still unmarked: "+list, true);
 }
 function cleanTime(raw){ return /\d/.test(raw)?raw:null; }
 function nowClock(){
@@ -1131,7 +1156,31 @@ el("editLast").addEventListener("keydown",function(e){if(e.key==="Enter"&&!el("e
 el("openClose").onclick=function(){
   if(!state.loc){toast("Pick a location first",true);return;}
   if(isIntakeView()){ loadIntake(); return; }   // picks save as they're tapped; this just re-reads the list
-  // Gate 1: this shelter's Tonight's Staff must be fully entered before closing.
+  if(state.inflight>0){ toast("Still saving — try Close Night again in a moment"); return; }
+  // Gate 1: every guest on this roster needs a status. Re-read the sheet first
+  // so taps made on other phones count (and walk-ups added on them are caught).
+  setSync("busy","Checking roster…");
+  api({action:"roster", location:state.loc, date:state.date})
+    .then(function(res){
+      if(!res || !res.ok){
+        setSync("err","Roster check failed");
+        toast("Couldn't check the roster — try again", true);
+        return;   // fail safe
+      }
+      applyRoster(res); render();
+      var unmarked = state.guests.filter(function(g){ return !g.status; }).map(function(g){ return g.name; });
+      if(unmarked.length){
+        setSync("ok","Synced "+nowClock());
+        unmarkedToast(unmarked);
+        return;   // hard block — unmarked guests are already at the top of the list
+      }
+      checkStaffThenIntake();
+    })
+    .catch(function(){ setSync("err","Offline?"); toast("Couldn't reach the sheet to check the roster — try again", true); });
+};
+
+// Gate 2: this shelter's Tonight's Staff must be fully entered before closing.
+function checkStaffThenIntake(){
   setSync("busy","Checking staff…");
   api({action:"staff", location:state.loc, date:state.date})
     .then(function(res){
@@ -1155,9 +1204,9 @@ el("openClose").onclick=function(){
       setSync("err","Staff check failed");
       toast("Couldn't check tonight's staff ("+(err && err.message ? err.message : "no response")+"). Tap ☰ → Connection settings and confirm the "+(state.loc==="shrine"?"Shrine":"Central")+" URL.", true);
     });
-};
+}
 
-// Gate 2: if an intake tab exists for tonight and isn't fully assigned, block.
+// Gate 3: if an intake tab exists for tonight and isn't fully assigned, block.
 function checkIntakeThenClose(){
   if(!state.urls.newguests){
     // No New Guests URL configured — the gate can't run. Tell the user rather
@@ -1190,15 +1239,13 @@ function checkIntakeThenClose(){
 }
 
 function buildCloseDialog(){
-  var t={stayed:0,yoga:0,excused:0,turned:0,noshow:0,banned:0,moved:0,unmarked:0};
-  state.guests.forEach(function(g){g.status?t[g.status]++:t.unmarked++;});
-  var carry=t.stayed+t.yoga+t.excused+t.turned, drop=t.noshow+t.banned+t.moved+t.unmarked;
-  var warn = t.unmarked>0
-    ? '<div class="close-warn">⚠️ '+t.unmarked+' guest'+(t.unmarked===1?'':'s')+' still unmarked. If you close now '+(t.unmarked===1?'it':'they')+' will be recorded as <b>No Show</b>.</div>'
-    : '';
-  el("closeSummary").innerHTML=warn+"Tonight ("+fmtDate(state.date)+"):<br>• <b>"+t.stayed+"</b> stayed, <b>"+t.yoga+"</b> yoga, <b>"+t.excused+"</b> excused, <b>"+t.turned+"</b> turned away<br>• <b>"+(t.noshow+t.unmarked)+"</b> no-show"+(t.unmarked?" (incl. "+t.unmarked+" unmarked)":"")+", <b>"+t.banned+"</b> banned, <b>"+t.moved+"</b> moved<br><br><b>"+carry+"</b> roll forward · <b>"+drop+"</b> drop off.";
-  el("closeConfirm").textContent = t.unmarked>0 ? "Close Anyway ➜" : "Roll to Next Night";
-  el("closeConfirm").className = "sheet-btn " + (t.unmarked>0 ? "danger" : "primary");
+  // Gate 1 already guaranteed every guest has a status.
+  var t={stayed:0,yoga:0,excused:0,turned:0,noshow:0,banned:0,moved:0};
+  state.guests.forEach(function(g){ if(t[g.status]!=null) t[g.status]++; });
+  var carry=t.stayed+t.yoga+t.excused+t.turned, drop=t.noshow+t.banned+t.moved;
+  el("closeSummary").innerHTML="Tonight ("+fmtDate(state.date)+"):<br>• <b>"+t.stayed+"</b> stayed, <b>"+t.yoga+"</b> yoga, <b>"+t.excused+"</b> excused, <b>"+t.turned+"</b> turned away<br>• <b>"+t.noshow+"</b> no-show, <b>"+t.banned+"</b> banned, <b>"+t.moved+"</b> moved<br><br><b>"+carry+"</b> roll forward · <b>"+drop+"</b> drop off.";
+  el("closeConfirm").textContent = "Roll to Next Night";
+  el("closeConfirm").className = "sheet-btn primary";
   el("closeScrim").querySelector(".sheet h2").textContent = "Close Out Tonight";
   var note0=el("closeScrim").querySelector(".note"); if(note0) note0.style.display="";
   show("closeScrim");
@@ -1214,6 +1261,14 @@ el("closeConfirm").onclick=function(){
 function doClose(confirmOverwrite){
   api({action:"close", location:state.loc, date:state.date, confirmOverwrite:confirmOverwrite})
     .then(function(res){
+      if(res && res.error==="unmarked"){
+        // The script refused: someone still has no status (e.g. added on
+        // another phone in the last few seconds). Show the fresh roster.
+        setSync("ok","Ready");
+        unmarkedToast(res.unmarkedNames||[]);
+        loadRoster();
+        return;
+      }
       if(res && res.ok && res.recloseLocked){
         // Already closed on a prior date — re-roll is locked. Point to manual fix.
         setSync("ok","Ready");
@@ -1270,6 +1325,8 @@ el("staffSave").onclick=function(){
     .then(function(res){ doneInflight(res&&res.ok); state.staffFilled=STAFF_KEYS.some(function(k){return staff[k];}); render(); toast("Staff saved"); })
     .catch(function(){ doneInflight(false); toast("Staff save failed",true); });
 };
+el("mGate").onclick=function(){hide("menuScrim");show("gateScrim");};
+el("gateClose").onclick=function(){hide("gateScrim");};
 el("mRefresh").onclick=function(){hide("menuScrim");loadRoster();};
 el("mDate").onclick=function(){
   var v=prompt("Go to which night? (YYYY-MM-DD)",state.date);
