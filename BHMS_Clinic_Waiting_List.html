@@ -86,6 +86,23 @@
     border-radius:11px;padding:10px 12px;font-family:"Avenir Next",system-ui,sans-serif;
     font-size:13px;font-weight:700;line-height:1;}
   .remove-btn:active{transform:scale(.96);}
+  /* On Deck: the main action on a waiting row. Outlined (not filled) so it
+     never looks like the Seen button. */
+  .deck-btn{border:2px solid var(--medical);background:#fff;color:var(--medical);
+    border-radius:11px;padding:9px 13px;font-family:"Avenir Next",system-ui,sans-serif;
+    font-size:14px;font-weight:700;line-height:1;white-space:nowrap;}
+  .deck-btn.foot{border-color:var(--foot);color:var(--foot);}
+  .deck-btn:active{transform:scale(.96);}
+  .back-btn{border:1px solid var(--line);background:#fff;color:var(--muted);
+    border-radius:11px;padding:10px 12px;font-family:"Avenir Next",system-ui,sans-serif;
+    font-size:13px;font-weight:700;line-height:1;}
+  .back-btn:active{transform:scale(.96);}
+  /* On Deck rows: tinted card with a service-colored edge */
+  .guest.deck{border-left:5px solid var(--medical);background:#fbf3f3;}
+  .guest.deck.foot{border-left-color:var(--foot);background:#f1f6f9;}
+  .g-order.deck{background:var(--medical);color:#fff;border-color:var(--medical);}
+  .g-order.deck.foot{background:var(--foot);border-color:var(--foot);}
+  .divider.deck{color:var(--medical);} .divider.deck.foot{color:var(--foot);}
   .btn-add{background:var(--navy);}
 
   /* + Add Guest picker */
@@ -239,7 +256,7 @@
 
 <script>
 "use strict";
-var APP_BUILD = "2026-10-23a";
+var APP_BUILD = "2026-11-12a";
 
 var LS_URL_SHRINE = "bashor.clinic.url.shrine.v1";
 var LS_URL_CENTRAL = "bashor.clinic.url.central.v1";
@@ -447,6 +464,50 @@ function undoSeen(name){
     .then(function(res){ g.pending=false; doneInflight(res && res.ok); })
     .catch(function(){ g.pending=false; doneInflight(false); toast("Undo failed — tap Refresh", true); });
 }
+/* ---- On Deck / Back ----
+   On Deck = he's in the waiting area, ready to go back. The script stamps the
+   time he was called up; the On Deck section is seen in that order, so a late
+   arrival can't jump the men already waiting. Back returns him to his original
+   sign-up spot in the waiting list (the sheet keeps that time). */
+function putOnDeck(name){
+  var g = state.guests.find(function(x){return x.name===name;});
+  if(!g) return;
+  var svc = state.service, cur = g[svc] || {state:"none",time:""};
+  if(cur.state !== "yes" || cur.onDeck) return;
+  g[svc] = {state:"yes", time:cur.time, onDeck:true, deckTime:nowClock()};   // replaced by the script's stamp on next load
+  g.pending = true; render();
+  state.inflight++; setSync("busy","Saving…");
+  api(curUrl(), {action:"clinicmark", location:state.shelter, date:state.date, name:name,
+                 service:svc, op:"deck"})
+    .then(function(res){
+      g.pending=false;
+      if(res && res.ok && res.deckTime) g[svc].deckTime = res.deckTime;
+      if(!(res && res.ok)){
+        g[svc] = cur;
+        toast("On Deck didn't save — tap Refresh", true);
+      }
+      doneInflight(res && res.ok);
+    })
+    .catch(function(){ g.pending=false; g[svc]=cur; doneInflight(false); toast("On Deck didn't save — tap Refresh", true); });
+}
+function sendBack(name){
+  var g = state.guests.find(function(x){return x.name===name;});
+  if(!g) return;
+  var svc = state.service, cur = g[svc] || {state:"none",time:""};
+  if(cur.state !== "yes" || !cur.onDeck) return;
+  g[svc] = {state:"yes", time:cur.time};
+  g.pending = true; render();
+  state.inflight++; setSync("busy","Saving…");
+  api(curUrl(), {action:"clinicmark", location:state.shelter, date:state.date, name:name,
+                 service:svc, op:"undeck"})
+    .then(function(res){
+      g.pending=false;
+      if(!(res && res.ok)){ g[svc] = cur; toast("Couldn't move him back — tap Refresh", true); }
+      doneInflight(res && res.ok);
+    })
+    .catch(function(){ g.pending=false; g[svc]=cur; doneInflight(false); toast("Couldn't move him back — tap Refresh", true); });
+}
+
 // Remove a WAITING guest from the current list only (Medical or Foot).
 // Never touches the other service, and never applies to a Seen guest.
 function removeRequest(name){
@@ -454,7 +515,7 @@ function removeRequest(name){
   if(!g) return;
   var svc = state.service;
   var cur = g[svc] || {state:"none",time:""};
-  if(cur.state !== "yes") return;
+  if(cur.state !== "yes" || cur.onDeck) return;
   if(!confirm("Remove "+name+" from the "+serviceName(svc)+" list?")) return;
   g[svc] = {state:"none", time:""};
   g.pending = true; render();
@@ -599,13 +660,16 @@ function render(){
     return s === "yes" || s === "seen";
   });
 
-  // counts
-  var waiting = rel.filter(function(g){return g[state.service].state==="yes";}).length;
-  var seen    = rel.filter(function(g){return g[state.service].state==="seen";}).length;
+  // counts (Waiting excludes the men On Deck)
+  var svc = state.service;
+  var onDeck  = rel.filter(function(g){return g[svc].state==="yes" && g[svc].onDeck;}).length;
+  var waiting = rel.filter(function(g){return g[svc].state==="yes" && !g[svc].onDeck;}).length;
+  var seen    = rel.filter(function(g){return g[svc].state==="seen";}).length;
   el("counts").innerHTML =
+    '<div class="tb-count"><b>'+onDeck+'</b>On Deck</div>'+
     '<div class="tb-count"><b>'+waiting+'</b>Waiting</div>'+
     '<div class="tb-count"><b>'+seen+'</b>Seen</div>'+
-    '<div class="tb-count"><b>'+(waiting+seen)+'</b>Total</div>';
+    '<div class="tb-count"><b>'+(onDeck+waiting+seen)+'</b>Total</div>';
 
   var listEl = el("list");
   if(state.loading){ listEl.innerHTML='<div class="spin"></div>'; return; }
@@ -629,9 +693,18 @@ function render(){
     return;
   }
 
-  // Sort: not-yet-seen by sign-up time ASC (earliest first = top of queue),
-  // then seen by seen-time ASC at the bottom.
-  var waitingArr = rel.filter(function(g){return g[state.service].state==="yes";})
+  // Three sections:
+  //   On Deck — in the order they were called up (earliest first = next to go back)
+  //   Waiting — by sign-up time (earliest first)
+  //   Seen    — by seen time, at the bottom
+  var deckArr = rel.filter(function(g){return g[svc].state==="yes" && g[svc].onDeck;})
+    .sort(function(a,b){
+      var ta = sortKey(a[svc].deckTime), tb = sortKey(b[svc].deckTime);
+      if(ta != null && tb != null && ta !== tb) return ta - tb;
+      if(ta != null && tb == null) return -1; if(ta == null && tb != null) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  var waitingArr = rel.filter(function(g){return g[svc].state==="yes" && !g[svc].onDeck;})
     .sort(function(a,b){
       // sign-up time may be missing on legacy rows; fall back to name
       var ta = sortKey(a[state.service].time), tb = sortKey(b[state.service].time);
@@ -647,17 +720,26 @@ function render(){
       return a.name.localeCompare(b.name);
     });
 
+  var footCls = svc==="foot" ? " foot" : "";
   var html = "";
+  if(deckArr.length){
+    html += '<div class="divider deck'+footCls+'" style="margin-top:4px">On Deck ('+deckArr.length+')</div>';
+    deckArr.forEach(function(g, i){ html += renderGuest(g, i+1, "deck"); });
+  }
   if(waitingArr.length){
-    waitingArr.forEach(function(g, i){ html += renderGuest(g, i+1, false); });
+    if(deckArr.length) html += '<div class="divider">Waiting ('+waitingArr.length+')</div>';
+    waitingArr.forEach(function(g, i){ html += renderGuest(g, i+1, "wait"); });
   }
   if(seenArr.length){
     html += '<div class="divider">Seen ('+seenArr.length+')</div>';
-    seenArr.forEach(function(g){ html += renderGuest(g, null, true); });
+    seenArr.forEach(function(g){ html += renderGuest(g, null, "seen"); });
   }
   listEl.innerHTML = html;
 }
-function renderGuest(g, pos, isSeen){
+// kind: "deck" (in the waiting area), "wait" (on the list), or "seen"
+function renderGuest(g, pos, kind){
+  var isSeen = kind==="seen";
+  var footCls = state.service==="foot" ? " foot" : "";
   var nm = escapeHtml(g.name);
   var other = state.service==="medical" ? "foot" : "medical";
   var otherState = (g[other]||{}).state;
@@ -665,20 +747,26 @@ function renderGuest(g, pos, isSeen){
   if(otherState==="yes")  otherLabel = '<span class="other">also wants '+(other==="foot"?"Foot":"Medical")+'</span>';
   else if(otherState==="seen") otherLabel = (other==="foot"?"Foot":"Medical")+' done';
 
-  var orderCls = isSeen ? "g-order seen" : (pos===1 ? "g-order next"+(state.service==="foot"?" foot":"") : "g-order");
+  // Badge: On Deck rows are numbered in solid color (#1 goes back next);
+  // waiting rows are numbered plain; seen rows get a check.
+  var orderCls = isSeen ? "g-order seen" : (kind==="deck" ? "g-order deck"+footCls : "g-order");
   var orderTxt = isSeen ? "✓" : (pos==null ? "·" : pos);
 
+  // One main action per row, so On Deck and Seen are never side by side.
   var btn;
   if(isSeen){
     btn = '<button class="undo-btn" data-undo="'+nm+'">Undo</button>';
+  } else if(kind==="deck"){
+    btn = '<button class="back-btn" data-back="'+nm+'">Back</button>'+
+          '<button class="seen-btn'+footCls+'" data-seen="'+nm+'">Seen</button>';
   } else {
     btn = '<button class="remove-btn" data-remove="'+nm+'">Remove</button>'+
-          '<button class="seen-btn'+(state.service==="foot"?" foot":"")+'" data-seen="'+nm+'">Seen</button>';
+          '<button class="deck-btn'+footCls+'" data-deck="'+nm+'">On Deck</button>';
   }
 
   var metaLine = otherLabel ? ('<div class="g-meta">'+otherLabel+'</div>') : '';
 
-  return '<div class="guest'+(isSeen?' seen':'')+(g.pending?' pending':'')+'">'+
+  return '<div class="guest'+(isSeen?' seen':'')+(kind==="deck"?' deck'+footCls:'')+(g.pending?' pending':'')+'">'+
     '<div class="g-head">'+
       '<div class="'+orderCls+'">'+orderTxt+'</div>'+
       '<div class="g-name">'+nm+ metaLine + '</div>'+
@@ -702,6 +790,10 @@ el("list").addEventListener("click", function(e){
   if(u){ undoSeen(u.getAttribute("data-undo")); return; }
   var r = e.target.closest("[data-remove]");
   if(r){ removeRequest(r.getAttribute("data-remove")); return; }
+  var dk = e.target.closest("[data-deck]");
+  if(dk){ putOnDeck(dk.getAttribute("data-deck")); return; }
+  var bk = e.target.closest("[data-back]");
+  if(bk){ sendBack(bk.getAttribute("data-back")); return; }
 });
 el("addList").addEventListener("click", function(e){
   var b = e.target.closest("[data-addreq]");
